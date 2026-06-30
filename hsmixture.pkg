@@ -1,0 +1,36 @@
+v 3
+d hsmixture: Discrete-time hazard models with Heckman-Singer mixture heterogeneity
+d
+d Authors: Jonghoon Park and R. Alan Seals
+d         Department of Economics
+d         Auburn University
+d         Contact: jzp0200@auburn.edu / ras0029@auburn.edu
+d
+d Distribution-Date: 20260507
+d
+d Implements three estimators for discrete-time duration models with
+d nonparametric (Heckman-Singer 1984) unobserved heterogeneity:
+d
+d   hsmixture           - Single-equation discrete-time hazard
+d   hsmixture_joint     - Joint timing-of-events (Abbring-van den Berg 2003)
+d   hsmixture_bivariate - Bivariate heterogeneity joint ToE (2x2 grid)
+d
+d Requires: Stata 14 or later
+d
+F hsmixture.ado
+F hsmixture_mata.do
+F hsmixture_joint.ado
+F hsmixture_joint_mata.do
+F hsmixture_bivariate.ado
+F hsmixture_bivariate_mata.do
+F hsmixture_joint_postestimation.ado
+F hsmixture.sthlp
+F hsmixture_joint.sthlp
+F hsmixture_joint_postestimation.sthlp
+F hsmixture_bivariate.sthlp
+F hsmixture_example.do
+F hsmixture_certification.do
+F hsmixture_certification_common.do
+F hsmixture_certification_opposite_signs.do
+F hsmixture_certification_bivariate.do
+F LICENSE

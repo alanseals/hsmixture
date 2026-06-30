@@ -1,0 +1,5 @@
+v 3
+d Materials by Jonghoon Park and R. Alan Seals
+d Auburn University
+d
+p hsmixture Discrete-time hazard models with Heckman-Singer mixture heterogeneity

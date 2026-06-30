@@ -1,0 +1,15 @@
+# Generated at runtime
+*.dta
+*.log
+*.txt
+*.smcl
+
+# Legacy evaluator files (not part of distributed package)
+hsmixture_ll.ado
+hsmixture_joint_ll.ado
+hsmixture_bivariate_ll.ado
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+Icon?
