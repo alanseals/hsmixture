@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.1  07may2026}{...}
+{* *! version 2.3.2  30jun2026}{...}
 {vieweralsosee "hsmixture" "help hsmixture"}{...}
 {vieweralsosee "hsmixture_joint" "help hsmixture_joint"}{...}
 {vieweralsosee "hsmixture_joint_postestimation" "help hsmixture_joint_postestimation"}{...}
@@ -298,6 +298,13 @@ and E. Leamer, 3381-3460. Amsterdam: Elsevier.
 {marker version}{...}
 {title:Version history}
 
+{phang}2.3.2  30jun2026  Fixed e(rho) implied-correlation calculation. A
+    variance term squared a macro holding a possibly-negative mean without
+    parentheses, so `E_vT'^2 parsed as -(E_vT^2) when the mean was negative
+    (exponentiation outranks unary minus), inflating the variance and deflating
+    rho. Parenthesized the squared terms. Affects the reported e(rho) only;
+    likelihood, coefficients, hazard ratio, and standard errors unchanged.
+    Certification now passes 6/6.{p_end}
 {phang}2.3.1  07may2026  Markout of covariates moved before data-contract
     asserts. e(N_persons) stored; BIC denominator switched to person count.
     Bivariate parameter-recovery cert added (hsmixture_certification_bivariate.do).{p_end}

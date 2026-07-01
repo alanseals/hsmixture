@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.1  07may2026}{...}
+{* *! version 2.3.2  30jun2026}{...}
 {vieweralsosee "hsmixture" "help hsmixture"}{...}
 {vieweralsosee "hsmixture_bivariate" "help hsmixture_bivariate"}{...}
 {vieweralsosee "hsmixture_joint_postestimation" "help hsmixture_joint_postestimation"}{...}
@@ -535,6 +535,8 @@ and E. Leamer, 3381-3460. Amsterdam: Elsevier.
 {marker version}{...}
 {title:Version history}
 
+{phang}2.3.2  30jun2026  Coordinated package version bump. No functional change
+    to this command; see hsmixture_bivariate for an e(rho) calculation fix.{p_end}
 {phang}2.3.1  07may2026  Markout of covariates moved before data-contract
     asserts. e(N_persons) stored; BIC denominator switched to person count
     (the IID unit for this mixture model).{p_end}

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.1  07may2026}{...}
+{* *! version 2.3.2  30jun2026}{...}
 {vieweralsosee "hsmixture_joint" "help hsmixture_joint"}{...}
 {vieweralsosee "hsmixture_bivariate" "help hsmixture_bivariate"}{...}
 {viewerjumpto "Syntax" "hsmixture_joint_postestimation##syntax"}{...}
@@ -172,6 +172,8 @@ non-converged fit are not interpretable.
 
 {title:Version history}
 
+{phang}2.3.2  30jun2026  Coordinated package version bump. No functional change
+    to this command; see hsmixture_bivariate for an e(rho) calculation fix.{p_end}
 {phang}2.3.1  07may2026  lrtest() path now uses _estimates hold/unhold to
     preserve the user's active e() (the previous restore . was non-standard
     syntax). BIC denominator switched to person count via e(N_persons), with

@@ -1,4 +1,4 @@
-*! version 2.3.1  07may2026
+*! version 2.3.2  30jun2026
 *! Heckman-Singer Joint Timing-of-Events Model
 *! Two-equation discrete-time hazard with correlated unobserved heterogeneity.
 *! Supports two factor structures via factor() option:

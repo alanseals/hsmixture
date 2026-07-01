@@ -1,4 +1,4 @@
-*! version 2.3.1  07may2026
+*! version 2.3.2  30jun2026
 *! Bivariate Heterogeneity Joint Timing-of-Events Model
 *! Two-dimensional discrete-time hazard with SEPARATE latent types for
 *! treatment (v_T) and outcome (v_Y) on a 2x2 joint grid.
@@ -518,8 +518,10 @@ program hsmixture_bivariate, eclass sortpreserve
 
     local E_vT = (`pi21' + `pi22') * _b[/v_T2]
     local E_vY = (`pi12' + `pi22') * _b[/v_Y2]
-    local Var_vT = (`pi21' + `pi22') * _b[/v_T2]^2 - `E_vT'^2
-    local Var_vY = (`pi12' + `pi22') * _b[/v_Y2]^2 - `E_vY'^2
+    * Parenthesize squared terms: a bare `E_vT'^2 parses as -(E_vT^2) when the
+    * mean is negative (^ outranks unary minus), which inflates the variance.
+    local Var_vT = (`pi21' + `pi22') * (_b[/v_T2])^2 - (`E_vT')^2
+    local Var_vY = (`pi12' + `pi22') * (_b[/v_Y2])^2 - (`E_vY')^2
     local Cov_TY = `pi22' * _b[/v_T2] * _b[/v_Y2] - `E_vT' * `E_vY'
 
     if `Var_vT' > 0 & `Var_vY' > 0 {
