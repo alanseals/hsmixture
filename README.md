@@ -96,7 +96,7 @@ After installation, type `help hsmixture`, `help hsmixture_joint`, `help hsmixtu
 - `hsmixture_example.do` -- smoke test that exercises all three estimators end-to-end on a small synthetic DGP. Not a parameter-recovery test (the DGP is at the edge of identifiability for K=2).
 - `hsmixture_certification.do` -- parameter-recovery test for `hsmixture_joint` with same-sign loadings.
 - `hsmixture_certification_common.do` -- parameter-recovery test for `factor(common)`. Includes a falsifiability test that refits `factor(separate)` on common-loading data and checks that no spurious gap is manufactured.
-- `hsmixture_certification_opposite_signs.do` -- parameter-recovery test for the opposite-signs heterogeneity case (negative selection between treatment-prone and outcome-prone types). Validates the regime that the production NLSY pregnancy fit lands in.
+- `hsmixture_certification_opposite_signs.do` -- parameter-recovery test for the opposite-signs heterogeneity case (negative selection between treatment-prone and outcome-prone types).
 - `hsmixture_certification_bivariate.do` -- parameter-recovery test for `hsmixture_bivariate` on a DGP with substantial off-diagonal mass on the (v_T, v_Y) grid.
 
 Each cert script asserts on a recovery threshold and exits non-zero if the criteria fail.

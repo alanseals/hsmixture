@@ -2,15 +2,16 @@
 *! Parameter-recovery certification for the OPPOSITE-SIGNS heterogeneity case.
 *!
 *! The standard hsmixture_certification.do tests recovery when lambda_T and
-*! lambda_Y have the same sign (both positive). The production NLSY pregnancy
-*! fit lands at lambda_T = +1.32, lambda_Y = -2.82 -- opposite signs --
-*! producing a joint-ToE HR (16.5) far above the simple cloglog HR (5.5).
+*! lambda_Y have the same sign (both positive). In applied joint timing-of-
+*! events models the two loadings can take OPPOSITE signs -- a latent type
+*! more prone to the treatment event can be less prone to the outcome event --
+*! which can push the joint-ToE hazard ratio well above the simple cloglog HR.
 *!
 *! The standard cert never validates this region. This script does.
 *!
 *! DGP rationale:
-*!   - lambda_T_true = +1.0  (type 2 more pregnancy-prone)
-*!   - lambda_Y_true = -1.5  (type 2 LESS dropout-prone)
+*!   - lambda_T_true = +1.0  (type 2 more treatment-prone)
+*!   - lambda_Y_true = -1.5  (type 2 LESS outcome-prone)
 *!   - pi_2 = 0.45, delta = 1.0 (HR_within_type = exp(1) = 2.72)
 *!
 *! Predicted simple cloglog HR (from DGP arithmetic):
@@ -322,13 +323,13 @@ if `n_pass' == 7 {
     display as txt "  Package recovers opposite-signs heterogeneity correctly."
     display as txt "  Identified quantities (delta, |lambda|, sign structure,"
     display as txt "  unordered mixture share) all match truth within tolerance."
-    display as txt "  This validates the production NLSY fit is in the right regime."
+    display as txt "  This validates recovery in the opposite-signs regime."
     display as txt "{hline 70}"
     capture log close _hsmix_opp
 }
 else {
     display as err "OPPOSITE-SIGNS CERTIFICATION FAILED (`n_pass'/7 criteria met)"
-    display as err "  Production NLSY fit (HR=16.5) cannot be trusted until this is resolved."
+    display as err "  Opposite-signs recovery is not validated until this is resolved."
     display as txt "{hline 70}"
     capture log close _hsmix_opp
     error 9
