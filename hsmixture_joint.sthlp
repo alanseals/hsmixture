@@ -253,7 +253,7 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {pstd}{bf:With treatment risk set restriction}{p_end}
 {phang2}{cmd:. hsmixture_joint (treat_event = pd_* x1) ///}{p_end}
 {phang2}{cmd:.     (outcome_event = pd_* x1, treat(treated)) ///}{p_end}
-{phang2}{cmd:.     , id(id) k(2) riskset(at_risk)}{p_end}
+{phang2}{cmd:.     , id(id) k(2) riskset(treat_at_risk)}{p_end}
 
 {pstd}{bf:Model selection across K (gated on strict convergence)}{p_end}
 {phang2}{cmd:. local model_list}{p_end}
