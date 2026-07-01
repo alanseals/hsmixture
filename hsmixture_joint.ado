@@ -54,7 +54,7 @@ program hsmixture_joint, eclass sortpreserve
     local outcome_indep = strtrim("`outcome_indep'")
 
     * Parse remaining options. PRisk() is a deprecated alias for RISKset()
-    * retained for back-compat with v2.0.0 production scripts.
+    * retained for back-compat with v2.0.0 caller scripts.
     *
     * FACTor() selects the heterogeneity structure:
     *   separate (default): two free signed loadings lambda_T, lambda_Y
@@ -123,7 +123,7 @@ program hsmixture_joint, eclass sortpreserve
     * Mark sample. Include riskset so that observations with missing
     * riskset values are excluded from the estimation sample rather than
     * silently entering Mata as missings (which would multiply the
-    * pregnancy log-likelihood contribution by missing).
+    * outcome log-likelihood contribution by missing).
     marksample touse
     markout `touse' `id' `treat_dep' `outcome_dep' `treat_var' `riskset'
 
@@ -620,7 +620,7 @@ program hsmixture_joint, eclass sortpreserve
     * further sends BFGS into a contraction-reset loop. The relative metric
     * matches the form of Mata's own nrtol stopping criterion.
     *
-    * Production callers gating on e(converged) will therefore distinguish
+    * Callers gating on e(converged) will therefore distinguish
     * a clean interior optimum from a boundary "convergence" that satisfies
     * BFGS's relative-LL stopping rule but is not a stationary point.
     local strict_converged = `best_converged'

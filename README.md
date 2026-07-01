@@ -56,7 +56,7 @@ For data with substantial off-diagonal mass on the (v_T, v_Y) grid, neither join
 
 ## When to use `riskset()`
 
-For one-time treatment timing (e.g., program entry, first marriage, first pregnancy), supply a 0/1 indicator that equals 1 only when the person is *at risk* for the treatment event. Typically this is the same as `treat_at_risk = (treated == 0)` if `treated` is the post-treatment dummy.
+For one-time treatment timing (e.g., program entry, first marriage, job displacement), supply a 0/1 indicator that equals 1 only when the person is *at risk* for the treatment event. Typically this is the same as `treat_at_risk = (treated == 0)` if `treated` is the post-treatment dummy.
 
 The package validates that `treat_event = 1` only occurs when `riskset = 1` and errors if it does not. It also validates that each person has at most one treatment event and at most one outcome event in the estimation sample.
 

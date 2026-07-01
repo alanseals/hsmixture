@@ -51,7 +51,7 @@ program hsmixture_bivariate, eclass sortpreserve
     local outcome_indep = strtrim("`outcome_indep'")
 
     * Parse remaining options. PRisk() is a deprecated alias for RISKset()
-    * retained for back-compat with v2.0.0 production scripts.
+    * retained for back-compat with v2.0.0 caller scripts.
     *
     * DIFFicult, TRace, GRADient, HESSian, TECHnique(), TOLerance(),
     * LTOLerance(), NRTOLerance() are legacy `ml model d0` options from
@@ -88,7 +88,7 @@ program hsmixture_bivariate, eclass sortpreserve
     * Mark sample. Include riskset so that observations with missing
     * riskset values are excluded from the estimation sample rather than
     * silently entering Mata as missings (which would multiply the
-    * pregnancy log-likelihood contribution by missing).
+    * outcome log-likelihood contribution by missing).
     marksample touse
     markout `touse' `id' `treat_dep' `outcome_dep' `treat_var' `riskset'
 
