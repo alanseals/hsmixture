@@ -39,8 +39,17 @@ program hsmixture, eclass sortpreserve
     * BEFORE the data-contract assertions. If a row has missing covariates it
     * will not enter the estimation sample, so it should not be checked by the
     * 0/1 / single-event assertions either.
-    unab indep_exp : `indepvars'
-    markout `touse' `indep_exp'
+    if "`indepvars'" != "" {
+        unab indep_exp : `indepvars'
+        markout `touse' `indep_exp'
+    }
+    else {
+        * Intercept-only model: no covariates supplied. The Mata design always
+        * appends a constant column, so an empty covariate list yields a valid
+        * constant-only hazard. indepvars is documented as optional; guarding
+        * the unab here keeps that promise (unab errors on an empty varlist).
+        local indep_exp ""
+    }
 
     * Validate K
     if `k' < 2 {
@@ -251,7 +260,7 @@ program hsmixture, eclass sortpreserve
 
     capture mata: st_numscalar("__hs_meig", min(Re(eigenvalues(st_matrix("e(V)")))))
     if _rc == 0 {
-        if scalar(__hs_meig) > 1e-8 local v_pd = 1
+        if !missing(scalar(__hs_meig)) & scalar(__hs_meig) > 1e-8 local v_pd = 1
     }
     if !`v_pd' local strict_converged = 0
     capture scalar drop __hs_meig

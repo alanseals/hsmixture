@@ -39,7 +39,7 @@
 *! are valid MLEs. The cert tests what IS identified: opposite-signs
 *! structure, magnitudes, delta, and the unordered mixture share.
 *!
-*! Authors: R. Alan Seals (Auburn University)
+*! Authors: Jonghoon Park and R. Alan Seals (Auburn University)
 
 clear all
 set seed 20260503
@@ -274,10 +274,16 @@ display as txt "close to the simple cloglog HR, possibly with a convergence"
 display as txt "warning. This is the diagnostic users should look for when"
 display as txt "deciding which factor mode their real data wants."
 
+* iterate(200) caps this deliberately-misspecified fit. factor(common) cannot
+* represent opposite-signs heterogeneity, so it never strictly converges and
+* would otherwise grind to the flat-region limit (400+ iterations). The result
+* is an informational misspecification record, not a scored criterion, so the
+* cap only shortens the log; converged=0 and the small/unstable lambda are the
+* diagnostic signature either way.
 capture noisily {
     hsmixture_joint (treat_event = x1 pd_*) ///
         (outcome_event = x1 pd_*, treat(treated)) ///
-        , id(id) k(2) factor(common) iterate(500) riskset(treat_at_risk)
+        , id(id) k(2) factor(common) iterate(200) riskset(treat_at_risk)
 }
 local rc_common = _rc
 
@@ -320,7 +326,7 @@ local n_pass = `pass_conv' + `pass_delta' + `pass_signs' + ///
 display _n as txt "{hline 70}"
 if `n_pass' == 7 {
     display as res "OPPOSITE-SIGNS CERTIFICATION PASSED (7/7 criteria met)"
-    display as txt "  Package recovers opposite-signs heterogeneity correctly."
+    display as txt "  hsmixture_joint recovers opposite-signs heterogeneity correctly."
     display as txt "  Identified quantities (delta, |lambda|, sign structure,"
     display as txt "  unordered mixture share) all match truth within tolerance."
     display as txt "  This validates recovery in the opposite-signs regime."

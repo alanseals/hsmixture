@@ -39,6 +39,7 @@
 {p2coldent:* {opth id(varname)}}panel identifier (required){p_end}
 {synopt:{opt k(#)}}number of mass points; default is {cmd:k(2)}{p_end}
 {synopt:{opth riskset(varname)}}treatment risk set indicator{p_end}
+{synopt:{opth prisk(varname)}}deprecated alias for {opt riskset()} (v2.0.0 back-compat){p_end}
 {synopt:{opt fact:or(name)}}heterogeneity factor structure: {cmd:common} or {cmd:separate} (default){p_end}
 
 {syntab:Maximization}
@@ -172,7 +173,9 @@ This is required. Data must be in person-period format.
 
 {phang}
 {opt k(#)} specifies the number of mass points (latent types). Default is
-{cmd:k(2)}. Any {cmd:k(#)} >= 2 is supported. Whether a given K is identified
+{cmd:k(2)}. Any {cmd:k(#)} >= 2 is accepted, but parameter recovery is certified
+only at K=2; K>=3 is syntactically supported yet not validated against a known
+data-generating process and is prone to boundary/spike solutions. Whether a given K is identified
 depends on the data, not the package. Report results only when
 {cmd:e(converged) == 1}. The command warns when BFGS did not converge, the
 relative gradient is too large, or the variance matrix is not positive definite.
@@ -227,6 +230,14 @@ starting values are obtained from separate cloglog GLMs for each equation.
 Joint models often require 200+ iterations. The Mata-accelerated optimizer
 uses BFGS with automatic tolerance settings.
 
+{phang}
+{opt difficult}, {opt trace}, {opt gradient}, {opt hessian},
+{opt technique(algorithm)}, {opt tolerance(#)}, {opt ltolerance(#)}, and
+{opt nrtolerance(#)} are accepted for back-compatibility with v2.0.0
+({cmd:ml model d0}-era) callers but have {bf:no effect}: estimation uses the
+Mata {cmd:optimize()} BFGS routine with fixed tolerances. Supplying any of them
+prints a note.
+
 {dlgtab:Reporting}
 
 {phang}
@@ -273,6 +284,13 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {phang2}{cmd:. else {c -(}}{p_end}
 {phang2}{cmd:.     display as err "No models strictly converged; nothing to compare."}{p_end}
 {phang2}{cmd:. {c )-}}{p_end}
+
+{pstd}{it:Note on BIC.} {cmd:estimates stats} computes BIC from the row count
+{cmd:e(N)} (person-periods), whereas this package reports BIC on the person
+count {cmd:e(N_persons)}. The two can rank K differently because the larger row
+count inflates the per-parameter penalty. For the person-count BIC, run
+{cmd:hsmixture_joint_postestimation, compare} after each fit and read its BIC
+line.{p_end}
 
 {pstd}{bf:Diagnostics after estimation}{p_end}
 {phang2}{cmd:. hsmixture_joint_postestimation, convergence}{p_end}
@@ -342,13 +360,17 @@ suggest sensitivity to heterogeneity specification. Report the range.
 {synopt:{cmd:e(grad_norm)}}L2 norm of the gradient at the optimum{p_end}
 {synopt:{cmd:e(rel_grad)}}relative gradient norm |gradient|/(1+|LL|) at the optimum{p_end}
 {synopt:{cmd:e(v_pd)}}1 if variance matrix is positive definite, 0 otherwise{p_end}
+{synopt:{cmd:e(N_persons)}}number of persons (IID unit; denominator for the person-count BIC){p_end}
+{synopt:{cmd:e(k)}}number of estimated parameters (= colsof(e(b))); distinct from {cmd:e(K)} mass points{p_end}
+{synopt:{cmd:e(rank)}}rank posted for {cmd:e(V)} (design parameter count){p_end}
+{synopt:{cmd:e(df_m)}}model degrees of freedom (design parameter count){p_end}
 {synopt:{cmd:e(ic)}}iteration count for the best starting configuration{p_end}
 {synopt:{cmd:e(n_starts)}}number of starting configurations tried{p_end}
 {synopt:{cmd:e(best_start)}}index of the starting configuration with best LL{p_end}
 {synopt:{cmd:e(delta)}}treatment effect (log hazard ratio){p_end}
 {synopt:{cmd:e(hr)}}hazard ratio exp(delta){p_end}
-{synopt:{cmd:e(hr_ci_lo)}}lower CI bound for hazard ratio{p_end}
-{synopt:{cmd:e(hr_ci_hi)}}upper CI bound for hazard ratio{p_end}
+{synopt:{cmd:e(hr_ci_lo)}}lower CI bound for hazard ratio (missing if not strictly converged){p_end}
+{synopt:{cmd:e(hr_ci_hi)}}upper CI bound for hazard ratio (missing if not strictly converged){p_end}
 {synopt:{cmd:e(lambda)}}shared factor loading (only under {cmd:factor(common)}){p_end}
 {synopt:{cmd:e(lambda_T)}}treatment-equation factor loading (signed). Under {cmd:factor(common)} this is an alias for {cmd:e(lambda)}.{p_end}
 {synopt:{cmd:e(lambda_Y)}}outcome-equation factor loading (signed). Under {cmd:factor(common)} this is an alias for {cmd:e(lambda)}.{p_end}
@@ -373,6 +395,7 @@ suggest sensitivity to heterogeneity specification. Report the range.
 {p2col 5 20 24 2: Matrices}{p_end}
 {synopt:{cmd:e(b)}}coefficient vector{p_end}
 {synopt:{cmd:e(V)}}variance-covariance matrix{p_end}
+{synopt:{cmd:e(gradient)}}gradient at the optimum{p_end}
 {synopt:{cmd:e(pi)}}mixture probabilities (1 x K){p_end}
 {synopt:{cmd:e(v)}}mass points (1 x K){p_end}
 

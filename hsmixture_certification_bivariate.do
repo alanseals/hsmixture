@@ -2,8 +2,10 @@
 *! Parameter-recovery certification for hsmixture_bivariate.
 *!
 *! The bivariate command admits a 2x2 grid of (v_T, v_Y) corners with a
-*! free joint probability matrix. It strictly nests the joint variants
-*! when the off-diagonal probabilities are unconstrained. This script
+*! free joint probability matrix. As the off-diagonal probabilities go to
+*! zero the model approaches factor(separate) (two free diagonal shifts);
+*! it matches factor(common) only if v_T2 = v_Y2. The softmax keeps every
+*! cell strictly positive, so this is a limiting case. This script
 *! exercises the off-diagonals.
 *!
 *! DGP rationale:

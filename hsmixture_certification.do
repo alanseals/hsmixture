@@ -1,5 +1,5 @@
 *! hsmixture_certification.do
-*! Parameter-recovery certification for the hsmixture package.
+*! Parameter-recovery certification for hsmixture_joint (joint timing-of-events model).
 *!
 *! Unlike hsmixture_example.do (which is a smoke test on a deliberately
 *! small DGP), this script targets a sample size and effect size where
@@ -229,7 +229,7 @@ local n_pass = `pass_conv' + `pass_delta' + `pass_lT' + `pass_lY' + `pass_pi'
 display _n as txt "{hline 70}"
 if `n_pass' == 5 {
     display as res "CERTIFICATION PASSED (5/5 criteria met)"
-    display as txt "  The package recovers the true DGP parameters within tolerance."
+    display as txt "  hsmixture_joint recovers the true DGP parameters within tolerance."
     display as txt "{hline 70}"
     capture log close _hsmixture_cert
 }

@@ -121,9 +121,21 @@ program hsmixture_joint_postestimation, rclass
         }
 
         if `vcov_ok' == 1 {
-            mata: st_numscalar("r(min_eigen)", min(Re(eigenvalues(st_matrix("`V'")))))
-            local min_eigen = r(min_eigen)
-            if `min_eigen' > 0 {
+            * Match the estimation-time convergence gate. Each estimator posts a
+            * scaffold V = I*1e-20 when Hessian inversion fails and rejects it
+            * with a min-eigenvalue > 1e-8 test (setting e(v_pd)=0). A bare ">0"
+            * test here would instead certify that placeholder as positive
+            * definite. Prefer the estimation-time verdict e(v_pd) when present;
+            * otherwise recompute with the same 1e-8 floor.
+            capture local vpd = e(v_pd)
+            if "`vpd'" != "" & "`vpd'" != "." {
+                local pd_ok = (`vpd' == 1)
+            }
+            else {
+                mata: st_numscalar("r(min_eigen)", min(Re(eigenvalues(st_matrix("`V'")))))
+                local pd_ok = (!missing(r(min_eigen)) & r(min_eigen) > 1e-8)
+            }
+            if `pd_ok' {
                 display as txt "  Variance matrix:" _col(35) as res "Positive definite"
             }
             else {
@@ -439,28 +451,64 @@ program hsmixture_joint_postestimation, rclass
                 quietly estimates restore `lrtest'
                 local ll_alt = e(ll)
                 local k_alt = e(k)
-                local K_alt = e(K)
+                capture local K_alt = e(K)
+                local cmd_alt = e(cmd)
+                local factor_alt = "`e(factor)'"
                 quietly _estimates unhold `_hsj_hold'
+
+                * Compatibility guard. The alternative must be the same command as
+                * the active fit; a cross-command target (e.g. hsmixture_bivariate,
+                * which stores no e(K)) does not nest the joint K-mixture and would
+                * otherwise read an undefined e(K) into `K_alt'.
+                if "`cmd_alt'" != "`e(cmd)'" {
+                    display as error "lrtest() target is `cmd_alt' but the active fit is `e(cmd)';"
+                    display as error "  the two are not nested and cannot be LR-compared."
+                    exit 498
+                }
+
+                * Classify the test to label the reference distribution correctly.
+                * Same K with a differing factor structure (factor(common) nested
+                * in factor(separate) via lambda_T=lambda_Y) is a regular interior
+                * restriction: the standard chi-square(df) reference is valid. A
+                * K-vs-K' comparison adds a mass point whose probability sits on
+                * the [0,1] boundary under the null, where chi-square is invalid.
+                local same_k = 0
+                if "`K_alt'" != "" & "`K_alt'" != "." {
+                    if `K_alt' == `K' local same_k = 1
+                }
 
                 local lr_stat = 2 * (`ll' - `ll_alt')
                 local df = `k_params' - `k_alt'
 
                 if `df' > 0 {
-                    display _n as txt "LR test vs `lrtest' (K=`K_alt'):"
+                    if `is_bivariate' {
+                        display _n as txt "LR test vs `lrtest':"
+                    }
+                    else {
+                        display _n as txt "LR test vs `lrtest' (K=`K_alt'):"
+                    }
                     display as txt "  LR statistic:" _col(30) %12.4f `lr_stat'
                     display as txt "  Degrees of freedom:" _col(30) %12.0f `df'
 
-                    * Boundary caveat. Going from K=k to K=k+1 adds a mass
-                    * point whose probability lives on [0,1]. Under the null
-                    * (the extra type is unneeded) pi_{k+1} sits on the
-                    * boundary of the parameter space, so 2*(L_alt - L_null)
-                    * is *not* chi-square(df). The reference distribution is
-                    * a mixture of chi-squares. We display the chi-square
-                    * p-value as a heuristic only, and flag this explicitly.
-                    display as err "  CAUTION: standard chi-square reference is invalid"
-                    display as err "  for K-selection (mixture-on-boundary problem)."
-                    display as err "  Treat the p-value below as a heuristic upper bound."
-                    display as err "  Prefer BIC, or a parametric-bootstrap LR distribution."
+                    * Reference-distribution caveat depends on WHAT is tested.
+                    * A same-K factor restriction (or any nested restriction on a
+                    * fixed mixture structure, as in bivariate-vs-bivariate) is
+                    * interior, so the standard chi-square(df) reference is valid.
+                    * A K-vs-K' comparison adds a mass point whose probability
+                    * lives on [0,1], so under the null 2*(L_alt - L_null) is
+                    * *not* chi-square(df) but a mixture of chi-squares.
+                    if `same_k' | `is_bivariate' {
+                        display as txt "  Interior parameter restriction (same mixture"
+                        display as txt "  structure, e.g. factor(common) vs factor(separate)"
+                        display as txt "  at fixed K, or nested covariates); the standard"
+                        display as txt "  chi-square(df) reference applies."
+                    }
+                    else {
+                        display as err "  CAUTION: standard chi-square reference is invalid"
+                        display as err "  for K-selection (mixture-on-boundary problem)."
+                        display as err "  Treat the p-value below as a heuristic upper bound."
+                        display as err "  Prefer BIC, or a parametric-bootstrap LR distribution."
+                    }
 
                     if `lr_stat' < 0 {
                         * Negative LR means the larger-K fit landed at a

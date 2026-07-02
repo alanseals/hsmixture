@@ -9,15 +9,15 @@ Stata package implementing three estimators for discrete-time duration models wi
 
 ## Installation
 
-The package is not yet hosted on a public repository. To install from a local clone, copy the `.ado`, `.sthlp`, and `_mata.do` files in this directory to your Stata adopath (e.g., `~/ado/personal/h/` on macOS or `c:\ado\personal\h\` on Windows) and verify with `which hsmixture`.
-
-A GitHub or SSC release is planned. When available, installation will use:
+Install directly from this GitHub repository:
 
 ```stata
-* Placeholder -- not active yet
-* net install hsmixture, from("https://raw.githubusercontent.com/alanseals/hsmixture/main")
-* ssc install hsmixture
+net install hsmixture, from("https://raw.githubusercontent.com/alanseals/hsmixture/main") replace
 ```
+
+Then verify with `which hsmixture`. An SSC release is planned.
+
+To install from a local clone instead, copy the `.ado`, `.sthlp`, and `_mata.do` files in this directory to your Stata adopath (e.g., `~/ado/personal/h/` on macOS or `c:\ado\personal\h\` on Windows).
 
 ## Quick start
 
@@ -85,7 +85,7 @@ AIC and BIC are computed using `e(N_persons)`, not row count `e(N)`. The IID uni
 - Stata 14 or later
 - Data in person-period (long) format, sorted by id and time
 - Covariates as explicit variables (no factor variable notation)
-- One treatment event per id, one absorbing outcome event per id
+- `hsmixture_joint` / `hsmixture_bivariate` only: at most one treatment event per id and at most one absorbing outcome event per id (a fully censored id with no outcome event is allowed). The single-equation `hsmixture` takes no treatment variable and requires only the outcome variable (at most one event per id).
 
 ## Documentation
 

@@ -33,6 +33,7 @@
 {syntab:Model}
 {p2coldent:* {opth id(varname)}}panel identifier (required){p_end}
 {synopt:{opth riskset(varname)}}treatment risk set indicator{p_end}
+{synopt:{opth prisk(varname)}}deprecated alias for {opt riskset()} (v2.0.0 back-compat){p_end}
 {synopt:{opt nst:arts(#)}}number of starting configurations; default is {cmd:nstarts(6)}{p_end}
 
 {syntab:Maximization}
@@ -71,8 +72,11 @@ data-determined. Opposite signs (negative selection) are admissible.{p_end}
 
 {phang2}{cmd:hsmixture_bivariate} (this command): per-type shifts (v_T*j, v_Y*k)
 land on a 2x2 grid of corners (0,0), (0,v_Y2), (v_T2,0), (v_T2,v_Y2) with a
-free joint probability matrix. Nests both joint variants when the off-diagonal
-probabilities are unconstrained.{p_end}
+free joint probability matrix. As the off-diagonal probabilities go to zero the
+model approaches {cmd:factor(separate)} (two free diagonal shifts); it matches
+{cmd:factor(common)} only in the further knife-edge case v_T2 = v_Y2. Because
+the softmax keeps every cell strictly positive, this is a limiting case rather
+than a finite-parameter model.{p_end}
 
 {pstd}
 {bf:When to use this:}
@@ -132,6 +136,14 @@ separate cloglog GLMs with varying mass point initializations.
 {phang}
 {opt iterate(#)} specifies the maximum number of iterations. Default is 200.
 The Mata-accelerated optimizer uses BFGS with automatic tolerance settings.
+
+{phang}
+{opt difficult}, {opt trace}, {opt gradient}, {opt hessian},
+{opt technique(algorithm)}, {opt tolerance(#)}, {opt ltolerance(#)}, and
+{opt nrtolerance(#)} are accepted for back-compatibility with v2.0.0
+({cmd:ml model d0}-era) callers but have {bf:no effect}: estimation uses the
+Mata {cmd:optimize()} BFGS routine with fixed tolerances. Supplying any of them
+prints a note.
 
 {dlgtab:Reporting}
 
@@ -198,11 +210,15 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {synopt:{cmd:e(grad_norm)}}L2 norm of the gradient at the optimum{p_end}
 {synopt:{cmd:e(rel_grad)}}relative gradient norm |gradient|/(1+|LL|) at the optimum{p_end}
 {synopt:{cmd:e(v_pd)}}1 if variance matrix is positive definite, 0 otherwise{p_end}
+{synopt:{cmd:e(N_persons)}}number of persons (IID unit; denominator for the person-count BIC){p_end}
+{synopt:{cmd:e(k)}}number of estimated parameters (= colsof(e(b))){p_end}
+{synopt:{cmd:e(rank)}}rank posted for {cmd:e(V)} (design parameter count){p_end}
+{synopt:{cmd:e(df_m)}}model degrees of freedom (design parameter count){p_end}
 {synopt:{cmd:e(ic)}}iteration count for the best starting configuration{p_end}
 {synopt:{cmd:e(delta)}}treatment effect (log hazard ratio){p_end}
 {synopt:{cmd:e(hr)}}hazard ratio exp(delta){p_end}
-{synopt:{cmd:e(hr_ci_lo)}}lower CI bound for hazard ratio{p_end}
-{synopt:{cmd:e(hr_ci_hi)}}upper CI bound for hazard ratio{p_end}
+{synopt:{cmd:e(hr_ci_lo)}}lower CI bound for hazard ratio (missing if not strictly converged){p_end}
+{synopt:{cmd:e(hr_ci_hi)}}upper CI bound for hazard ratio (missing if not strictly converged){p_end}
 {synopt:{cmd:e(se_delta)}}standard error of delta{p_end}
 {synopt:{cmd:e(v_T2)}}second treatment mass point{p_end}
 {synopt:{cmd:e(v_Y2)}}second outcome mass point{p_end}
@@ -226,6 +242,7 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {p2col 5 20 24 2: Matrices}{p_end}
 {synopt:{cmd:e(b)}}coefficient vector{p_end}
 {synopt:{cmd:e(V)}}variance-covariance matrix{p_end}
+{synopt:{cmd:e(gradient)}}gradient at the optimum{p_end}
 {synopt:{cmd:e(pi_joint)}}joint probability matrix (2 x 2){p_end}
 
 

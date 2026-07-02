@@ -14,8 +14,11 @@
 *!     origin (sign of locus is data-determined, opposite signs admissible).
 *!   hsmixture_bivariate (this command): 2x2 grid of corner shifts (0,0),
 *!     (0,v_Y2), (v_T2,0), (v_T2,v_Y2) with full joint probability matrix.
-*!     Strictly nests both joint variants when the off-diagonal probabilities
-*!     are unconstrained.
+*!     As the off-diagonal probabilities go to zero the model approaches
+*!     factor(separate) (two free diagonal shifts v_T2, v_Y2); it matches
+*!     factor(common) only in the further knife-edge case v_T2 = v_Y2. The
+*!     softmax keeps every cell strictly positive, so this is a limiting
+*!     case, not a finite-parameter model.
 
 program hsmixture_bivariate, eclass sortpreserve
     version 14
@@ -74,6 +77,19 @@ program hsmixture_bivariate, eclass sortpreserve
          TOLerance(real 1e-6) ///
          LTOLerance(real 1e-7) ///
          NRTOLerance(real 1e-5)]
+
+    * Legacy ml-model-d0 optimizer options (difficult/trace/gradient/hessian/
+    * technique()/tolerance()/ltolerance()/nrtolerance()) are accepted for
+    * back-compatibility but have NO effect: estimation uses Mata optimize()
+    * BFGS with fixed tolerances. Warn on the detectable ones (mirrors prisk()).
+    if "`difficult'`trace'`gradient'`hessian'`technique'" != "" ///
+        | `tolerance' != 1e-6 | `ltolerance' != 1e-7 | `nrtolerance' != 1e-5 {
+        display as txt "note: legacy optimizer options (difficult, trace, gradient,"
+        display as txt "  hessian, technique, tolerance, ltolerance, nrtolerance) are"
+        display as txt "  accepted for back-compatibility with v2.0.0 callers and"
+        display as txt "  ignored; estimation uses Mata optimize() BFGS with fixed"
+        display as txt "  tolerances."
+    }
 
     * Resolve prisk/riskset alias
     if "`prisk'" != "" & "`riskset'" != "" {
@@ -276,6 +292,7 @@ program hsmixture_bivariate, eclass sortpreserve
     local best_ll = .
     local best_converged = 0
     local nstarts_use = min(`nstarts', 6)
+    if `nstarts_use' < 1 local nstarts_use = 1
 
     forvalues s = 1/`nstarts_use' {
         * Build starting vector for this configuration
@@ -435,7 +452,7 @@ program hsmixture_bivariate, eclass sortpreserve
 
     capture mata: st_numscalar("__hsb_meig", min(Re(eigenvalues(st_matrix("e(V)")))))
     if _rc == 0 {
-        if scalar(__hsb_meig) > 1e-8 local v_pd = 1
+        if !missing(scalar(__hsb_meig)) & scalar(__hsb_meig) > 1e-8 local v_pd = 1
     }
     if !`v_pd' local strict_converged = 0
     capture scalar drop __hsb_meig
@@ -481,11 +498,19 @@ program hsmixture_bivariate, eclass sortpreserve
     ereturn scalar delta = `delta_est'
     ereturn scalar hr = `hr'
 
-    * CI for hazard ratio
+    * CI for hazard ratio. Gated on strict convergence: on a non-converged fit
+    * e(V) is the I*1e-20 scaffold, so the interval would be a fabricated near-
+    * zero-width CI. Post missing then (see hsmixture_joint.ado for rationale).
     local se_delta = _se[/delta]
     local z = invnormal(1 - (1 - `level'/100)/2)
-    ereturn scalar hr_ci_lo = exp(`delta_est' - `z' * `se_delta')
-    ereturn scalar hr_ci_hi = exp(`delta_est' + `z' * `se_delta')
+    if `strict_converged' {
+        ereturn scalar hr_ci_lo = exp(`delta_est' - `z' * `se_delta')
+        ereturn scalar hr_ci_hi = exp(`delta_est' + `z' * `se_delta')
+    }
+    else {
+        ereturn scalar hr_ci_lo = .
+        ereturn scalar hr_ci_hi = .
+    }
     ereturn scalar se_delta = `se_delta'
     ereturn scalar level = `level'
 
@@ -614,8 +639,16 @@ program Display
     display as txt "delta (log hazard ratio)" _col(30) "=" _col(35) %9.4f e(delta) ///
         _col(50) "SE = " %7.4f e(se_delta)
     display as txt "Hazard Ratio" _col(30) "=" _col(35) %9.2f e(hr)
-    display as txt "`level_val'% CI" _col(30) "=" _col(35) ///
-        "[" %5.2f `hr_lo' ", " %5.2f `hr_hi' "]"
+    * Print the CI only on a strictly converged fit (see hsmixture_joint.ado):
+    * on a non-converged fit the interval is a fabricated near-zero-width band.
+    if e(converged) == 1 {
+        display as txt "`level_val'% CI" _col(30) "=" _col(35) ///
+            "[" %5.2f `hr_lo' ", " %5.2f `hr_hi' "]"
+    }
+    else {
+        display as txt "`level_val'% CI" _col(30) "=" _col(35) ///
+            as err "not available (fit did not strictly converge)"
+    }
 
     * Mass points
     display _n as txt "Bivariate Mass Points:"

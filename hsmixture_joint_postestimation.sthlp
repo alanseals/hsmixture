@@ -60,8 +60,11 @@ These diagnostics help assess:
 {pmore}- Mass point separation check{p_end}
 
 {phang}
-{opt posterior} displays information about the mixture distribution and
-type interpretation.
+{opt posterior} displays the estimated mixture distribution: the {it:prior}
+(unconditional) population type shares pi_k with each type's mass point and
+factor-implied hazard shifts. Note this reports prior population shares, not
+per-person {it:posterior} type probabilities; no per-observation Bayes-rule
+posterior is computed. The option name is retained for back-compatibility.
 
 {phang}
 {opt compare} displays AIC, BIC, and guidance on model selection.
@@ -117,6 +120,13 @@ model to the stored estimates in {it:name}. Use this to test K=3 vs K=2, etc.
 {phang2}{cmd:. else {c -(}}{p_end}
 {phang2}{cmd:.     display as err "No models strictly converged; nothing to compare."}{p_end}
 {phang2}{cmd:. {c )-}}{p_end}
+
+{pstd}{it:Note on BIC.} {cmd:estimates stats} computes BIC from the row count
+{cmd:e(N)} (person-periods), whereas this package reports BIC on the person
+count {cmd:e(N_persons)}. The two can rank K differently because the larger row
+count inflates the per-parameter penalty. For the person-count BIC, run
+{cmd:hsmixture_joint_postestimation, compare} after each fit and read its BIC
+line.{p_end}
 
 {pstd}{bf:After hsmixture_bivariate}{p_end}
 {phang2}{cmd:. hsmixture_bivariate (...), id(id)}{p_end}

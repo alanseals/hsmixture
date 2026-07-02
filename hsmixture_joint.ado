@@ -100,6 +100,21 @@ program hsmixture_joint, eclass sortpreserve
          LTOLerance(real 1e-7) ///
          NRTOLerance(real 1e-5)]
 
+    * Legacy ml-model-d0 optimizer options (difficult/trace/gradient/hessian/
+    * technique()/tolerance()/ltolerance()/nrtolerance()) are accepted for
+    * back-compatibility with v2.0.0 callers but have NO effect: estimation uses
+    * Mata optimize() BFGS with fixed tolerances. Warn if a caller supplied one
+    * of the detectable toggles or technique() so the silent no-op is
+    * discoverable (mirrors the prisk() deprecation notice).
+    if "`difficult'`trace'`gradient'`hessian'`technique'" != "" ///
+        | `tolerance' != 1e-6 | `ltolerance' != 1e-7 | `nrtolerance' != 1e-5 {
+        display as txt "note: legacy optimizer options (difficult, trace, gradient,"
+        display as txt "  hessian, technique, tolerance, ltolerance, nrtolerance) are"
+        display as txt "  accepted for back-compatibility with v2.0.0 callers and"
+        display as txt "  ignored; estimation uses Mata optimize() BFGS with fixed"
+        display as txt "  tolerances."
+    }
+
     * Resolve factor() mode. Default separate for back-compat with v2.x callers.
     if "`factor'" == "" {
         local factor "separate"
@@ -647,7 +662,7 @@ program hsmixture_joint, eclass sortpreserve
 
     capture mata: st_numscalar("__hsj_meig", min(Re(eigenvalues(st_matrix("e(V)")))))
     if _rc == 0 {
-        if scalar(__hsj_meig) > 1e-8 local v_pd = 1
+        if !missing(scalar(__hsj_meig)) & scalar(__hsj_meig) > 1e-8 local v_pd = 1
     }
     if !`v_pd' local strict_converged = 0
     capture scalar drop __hsj_meig
@@ -746,13 +761,22 @@ program hsmixture_joint, eclass sortpreserve
     }
     ereturn matrix v = `v'
 
-    * Compute CI for hazard ratio
+    * Compute CI for hazard ratio. On a fit that did not strictly converge, e(V)
+    * is the I*1e-20 scaffold, so hr_lo/hr_hi collapse to a fabricated near-zero-
+    * width interval. Post missing in that case so a caller reading e() without
+    * checking e(converged) cannot mistake the placeholder for real precision.
     local se_delta = _se[/delta]
     local z = invnormal(1 - (1 - `level'/100)/2)
     local hr_lo = exp(`delta_est' - `z' * `se_delta')
     local hr_hi = exp(`delta_est' + `z' * `se_delta')
-    ereturn scalar hr_ci_lo = `hr_lo'
-    ereturn scalar hr_ci_hi = `hr_hi'
+    if `strict_converged' {
+        ereturn scalar hr_ci_lo = `hr_lo'
+        ereturn scalar hr_ci_hi = `hr_hi'
+    }
+    else {
+        ereturn scalar hr_ci_lo = .
+        ereturn scalar hr_ci_hi = .
+    }
     ereturn scalar level = `level'
 
     * Display results
@@ -846,8 +870,18 @@ program Display
     display as txt "delta (log hazard ratio)" _col(30) "=" _col(35) %9.4f e(delta) ///
         _col(50) "SE = " %7.4f `se_delta'
     display as txt "Hazard Ratio" _col(30) "=" _col(35) %9.2f e(hr)
-    display as txt "`level_val'% CI" _col(30) "=" _col(35) ///
-        "[" %5.2f `hr_lo' ", " %5.2f `hr_hi' "]"
+    * Print the CI only on a strictly converged fit. Otherwise e(V) is the
+    * I*1e-20 scaffold and hr_lo/hr_hi are a fabricated near-zero-width band;
+    * show "not available" rather than mislead a human reader (the stored
+    * e(hr_ci_lo)/e(hr_ci_hi) are missing in that case for the same reason).
+    if e(converged) == 1 {
+        display as txt "`level_val'% CI" _col(30) "=" _col(35) ///
+            "[" %5.2f `hr_lo' ", " %5.2f `hr_hi' "]"
+    }
+    else {
+        display as txt "`level_val'% CI" _col(30) "=" _col(35) ///
+            as err "not available (fit did not strictly converge)"
+    }
 
     * Factor loadings (signed under v_2=1 normalization)
     display _n as txt "Factor Loadings (signed; v_1=0, v_2=1 normalization):"

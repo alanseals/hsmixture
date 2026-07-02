@@ -47,7 +47,7 @@ log using "hsmixture_example_log.txt", text replace name(_hsmixture_log)
 *   beta_x1   = 0.3  (covariate effect on both hazards)
 
 display _n as txt "{hline 70}"
-display as txt "hsmixture package: Example and certification script"
+display as txt "hsmixture package: Example and smoke-test script"
 display as txt "{hline 70}"
 display as txt "Generating synthetic person-period data..."
 
@@ -241,6 +241,11 @@ display _n as txt "{hline 70}"
 display as txt "EXAMPLE 4: Model comparison (K=2 vs K=3)"
 display as txt "{hline 70}"
 
+* NOTE: estimates stats computes BIC from the row count e(N) (person-periods).
+* This package reports BIC on the person count e(N_persons), which can rank K
+* differently because the larger row count inflates the per-parameter penalty.
+* For the person-count BIC, run hsmixture_joint_postestimation, compare after
+* each fit (it reports the person-count BIC for the active model).
 estimates stats m_joint_k2 m_joint_k3
 
 * LR test
@@ -277,6 +282,9 @@ display as txt "{hline 70}"
 display as txt "True DGP: delta=0.5, lambda_T=0.5, lambda_Y=0.8, pi_1=0.6, v_2=1.0"
 display as txt ""
 
+* NOTE: estimates stats uses row-count BIC (e(N)); the package reports
+* person-count BIC (e(N_persons)). See the note in PART 5. For the person-count
+* BIC per model, run hsmixture_joint_postestimation, compare after each fit.
 estimates stats m_joint_k2 m_joint_k3 m_bivariate
 
 * Honest convergence summary. Each estimator exposes a strict convergence

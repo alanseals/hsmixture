@@ -109,7 +109,10 @@ This is required. Data must be in person-period format.
 
 {phang}
 {opt k(#)} specifies the number of mass points (latent types). Default is
-{cmd:k(2)}. Any {cmd:k(#)} >= 2 is supported. Whether a given K is identified
+{cmd:k(2)}. Any {cmd:k(#)} >= 2 is accepted, but parameter recovery is
+certified only at K=2; K>=3 is syntactically supported yet not validated
+against a known data-generating process and is prone to boundary/spike
+solutions. Whether a given K is identified
 depends on the data, not the package. Report results only when
 {cmd:e(converged) == 1}. The command warns when BFGS did not converge, the
 relative gradient is too large, or the variance matrix is not positive definite.
@@ -172,6 +175,15 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {phang2}{cmd:.     display as err "No models strictly converged; nothing to compare."}{p_end}
 {phang2}{cmd:. {c )-}}{p_end}
 
+{pstd}{it:Note on BIC.} Stata's {cmd:estimates stats} computes BIC from the row
+count {cmd:e(N)} (person-periods). {cmd:hsmixture} instead reports BIC on the
+person count {cmd:e(N_persons)}, the independent unit for this mixture, so the
+two BIC columns differ and can even rank K differently (the larger row count
+inflates the per-parameter penalty). The base {cmd:hsmixture} command has no
+person-count comparison path, so read the {cmd:estimates stats} BIC as
+row-count based and compare it against the person-count BIC printed in each
+fit's own output.{p_end}
+
 
 {marker results}{...}
 {title:Stored results}
@@ -189,6 +201,11 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {synopt:{cmd:e(converged_bfgs)}}BFGS optimizer's own convergence flag{p_end}
 {synopt:{cmd:e(grad_norm)}}L2 norm of the gradient at the optimum{p_end}
 {synopt:{cmd:e(v_pd)}}1 if variance matrix is positive definite, 0 otherwise{p_end}
+{synopt:{cmd:e(N_persons)}}number of persons (IID unit; denominator for the person-count BIC){p_end}
+{synopt:{cmd:e(ic)}}iteration count at the best optimum{p_end}
+{synopt:{cmd:e(rank)}}rank posted for {cmd:e(V)} (design parameter count){p_end}
+{synopt:{cmd:e(df_m)}}model degrees of freedom (design parameter count){p_end}
+{synopt:{cmd:e(level)}}confidence level used{p_end}
 {synopt:{cmd:e(lambda)}}factor loading (signed){p_end}
 {synopt:{cmd:e(sigma)}}alias for {cmd:e(lambda)} (back-compat){p_end}
 
@@ -203,6 +220,7 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {p2col 5 20 24 2: Matrices}{p_end}
 {synopt:{cmd:e(b)}}coefficient vector{p_end}
 {synopt:{cmd:e(V)}}variance-covariance matrix{p_end}
+{synopt:{cmd:e(gradient)}}gradient at the optimum{p_end}
 {synopt:{cmd:e(pi)}}mixture probabilities (1 x K){p_end}
 {synopt:{cmd:e(v)}}mass points (1 x K){p_end}
 
