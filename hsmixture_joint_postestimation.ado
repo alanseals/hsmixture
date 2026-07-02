@@ -1,4 +1,4 @@
-*! version 2.3.2  30jun2026
+*! version 2.3.3  02jul2026
 *! Heckman-Singer Joint ToE Model - Postestimation Diagnostics
 *! Convergence checks, mixture-distribution summary, and model comparison.
 *! Adapts display under factor(common) when called after hsmixture_joint.

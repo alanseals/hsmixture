@@ -1,4 +1,4 @@
-*! version 2.3.2  30jun2026
+*! version 2.3.3  02jul2026
 *! Bivariate Heterogeneity Joint Timing-of-Events Model
 *! Two-dimensional discrete-time hazard with SEPARATE latent types for
 *! treatment (v_T) and outcome (v_Y) on a 2x2 joint grid.

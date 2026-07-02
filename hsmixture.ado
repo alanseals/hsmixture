@@ -1,4 +1,4 @@
-*! version 2.3.2  30jun2026
+*! version 2.3.3  02jul2026
 *! Heckman-Singer Mixture Model - Single Equation
 *! Discrete-time hazard model with unobserved heterogeneity
 *! Mata-accelerated likelihood evaluator

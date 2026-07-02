@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.2  30jun2026}{...}
+{* *! version 2.3.3  02jul2026}{...}
 {vieweralsosee "hsmixture" "help hsmixture"}{...}
 {vieweralsosee "hsmixture_joint" "help hsmixture_joint"}{...}
 {vieweralsosee "hsmixture_joint_postestimation" "help hsmixture_joint_postestimation"}{...}
@@ -315,6 +315,11 @@ and E. Leamer, 3381-3460. Amsterdam: Elsevier.
 {marker version}{...}
 {title:Version history}
 
+{phang}2.3.3  02jul2026  Report the hazard-ratio confidence interval and the
+    positive-definite verdict only for strictly converged fits. e(hr_ci_lo) and
+    e(hr_ci_hi) are missing and the printed CI shows "not available" otherwise,
+    and the postestimation positive-definite check honors e(v_pd) or a >1e-8
+    floor. Mata numerical core unchanged, so point estimates are unaffected.{p_end}
 {phang}2.3.2  30jun2026  Fixed e(rho) implied-correlation calculation. A
     variance term squared a macro holding a possibly-negative mean without
     parentheses, so `E_vT'^2 parsed as -(E_vT^2) when the mean was negative
