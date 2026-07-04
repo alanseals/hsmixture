@@ -193,7 +193,7 @@ non-converged fit are not interpretable.
     preserve the user's active e() (the previous restore . was non-standard
     syntax). BIC denominator switched to person count via e(N_persons), with
     fallback to e(N) for pre-v2.3.1 fits.{p_end}
-{phang}2.3.0  05may2026  Added factor() awareness for hsmixture_joint output;
+{phang}2.3.0  04may2026  Added factor() awareness for hsmixture_joint output;
     common-loading display rows.{p_end}
 {phang}2.2.1  02may2026  Strict-convergence diagnostic uses relative gradient
     |grad|/(1+|LL|) < 1e-5; spike-and-slab corner detection.{p_end}

@@ -15,7 +15,7 @@ Install directly from this GitHub repository:
 net install hsmixture, from("https://raw.githubusercontent.com/alanseals/hsmixture/main") replace
 ```
 
-Then verify with `which hsmixture`. An SSC release is planned.
+Then verify with `which hsmixture`.
 
 To install from a local clone instead, copy the `.ado`, `.sthlp`, and `_mata.do` files in this directory to your Stata adopath (e.g., `~/ado/personal/h/` on macOS or `c:\ado\personal\h\` on Windows).
 
@@ -64,7 +64,7 @@ The package validates that `treat_event = 1` only occurs when `riskset = 1` and 
 
 `hsmixture_joint` and `hsmixture_bivariate` use multiple starting configurations and select the best log-likelihood. Mixture surfaces are multimodal at any K, so single-start is unsafe. Defaults are 7 starts (separate), 6 starts (common or bivariate). Override with `nstarts()`.
 
-`hsmixture` (single-equation) currently runs a single start from the GLM coefficients. Users running `hsmixture` alone should compare results against runs with user-supplied starting values via `from()` to guard against local modes.
+`hsmixture` (single-equation) runs a single start from the GLM coefficients. Users running `hsmixture` alone should compare results against runs with user-supplied starting values via `from()` to guard against local modes.
 
 ## Convergence
 
