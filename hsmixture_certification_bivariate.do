@@ -49,6 +49,19 @@ capture log close _hsmix_biv
 display as txt "Working directory: `c(pwd)'"
 log using "hsmixture_certification_bivariate_log.txt", text replace name(_hsmix_biv)
 
+* Provenance record: what code this certification actually ran on. Copy this
+* block's output (plus the package git commit SHA) into CERTIFICATION.md
+* when recording a release-gating run.
+display _n as txt "{hline 70}"
+display as txt "PROVENANCE"
+display as txt "  Run date/time:  `c(current_date)' `c(current_time)'"
+display as txt "  Stata version:  `c(stata_version)' (born `c(born_date)')"
+display as txt "  OS / machine:   `c(os)' / `c(machine_type)'"
+display as txt "  MP / cores:     `c(MP)' / `c(processors)'"
+display as txt "  Command under test:"
+which hsmixture_bivariate
+display as txt "{hline 70}"
+
 * ============================================================================
 * PART 1: Generate synthetic person-period data with bivariate-grid DGP
 * ============================================================================
@@ -239,6 +252,9 @@ display _n as txt "  Strict convergence (e(converged)==1):  `status_conv'"
 display as txt "    |grad| =" %9.2e `gn'
 display as txt "    |grad|/(1+|LL|) =" %9.2e `rg'
 display as txt "    V positive definite = `pd'"
+* See hsmixture_certification.do for why these two are printed.
+display as txt "    V min eigenvalue =" %9.2e e(v_mineig)
+display as txt "    V is placeholder/scaffold = " e(v_scaffold)
 
 * ============================================================================
 * PART 3: Final verdict

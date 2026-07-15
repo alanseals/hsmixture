@@ -84,8 +84,8 @@ real scalar _hsb_compute_ll(real rowvector b)
     real scalar     N, n_persons, k_treat, k_outcome, pos
     real colvector  beta_T, beta_Y
     real scalar     delta, v_T2, v_Y2
-    real scalar     logit_pi_12, logit_pi_21, logit_pi_22, sum_exp
-    real rowvector  pi_k, vT_type, vY_type
+    real scalar     logit_pi_12, logit_pi_21, logit_pi_22
+    real rowvector  eta_cells, pi_k, vT_type, vY_type
     real scalar     i, t, r1, r2
     real colvector  xb_treat, xb_outcome
     real matrix     person_ll_t
@@ -111,9 +111,12 @@ real scalar _hsb_compute_ll(real rowvector b)
     logit_pi_21 = b[pos+5]
     logit_pi_22 = b[pos+6]
 
-    // Softmax probabilities
-    sum_exp = 1 + exp(logit_pi_12) + exp(logit_pi_21) + exp(logit_pi_22)
-    pi_k = (1, exp(logit_pi_12), exp(logit_pi_21), exp(logit_pi_22)) / sum_exp
+    // Softmax probabilities over the four cell logits (reference cell (1,1)
+    // has logit 0). Max-shifted before exponentiating so a large logit
+    // cannot overflow exp(); the shift cancels in the ratio.
+    eta_cells = (0, logit_pi_12, logit_pi_21, logit_pi_22)
+    eta_cells = eta_cells :- max(eta_cells)
+    pi_k = exp(eta_cells) / sum(exp(eta_cells))
 
     // 4 joint types
     vT_type = (0, 0,    v_T2, v_T2)
@@ -168,6 +171,50 @@ real scalar _hsb_compute_ll(real rowvector b)
     total_ll = quadsum(ll_person)
     if (missing(total_ll)) total_ll = -1e20
     return(total_ll)
+}
+
+// ----------------------------------------------------------------
+// Clip-hit diagnostic
+// Counts linear-predictor evaluations outside the numerical bounds
+// [-20, 10] at parameter vector b (one count per row x type x equation).
+// Treatment-equation rows outside the risk set are excluded because their
+// contribution is multiplied by zero. Reported to the .ado as e(clip_hits).
+// ----------------------------------------------------------------
+real scalar _hsb_count_clips(real rowvector b)
+{
+    external real matrix    _hsb_X_treat, _hsb_X_outcome
+    external real colvector _hsb_treat_ind, _hsb_riskset
+    external real scalar    _hsb_k_treat, _hsb_k_outcome
+
+    real scalar     k_treat, k_outcome, pos, t, nclip
+    real colvector  beta_T, beta_Y, xb_treat, xb_outcome, eta_T, eta_Y
+    real scalar     delta, v_T2, v_Y2
+    real rowvector  vT_type, vY_type
+
+    k_treat   = _hsb_k_treat
+    k_outcome = _hsb_k_outcome
+
+    beta_T = b[1..k_treat]'
+    beta_Y = b[(k_treat+1)..(k_treat+k_outcome)]'
+    pos    = k_treat + k_outcome
+    delta  = b[pos+1]
+    v_T2   = b[pos+2]
+    v_Y2   = b[pos+3]
+
+    vT_type = (0, 0,    v_T2, v_T2)
+    vY_type = (0, v_Y2, 0,    v_Y2)
+
+    xb_treat   = _hsb_X_treat * beta_T
+    xb_outcome = _hsb_X_outcome * beta_Y
+
+    nclip = 0
+    for (t = 1; t <= 4; t++) {
+        eta_T = xb_treat :+ vT_type[t]
+        nclip = nclip + sum(((eta_T :< -20) :| (eta_T :> 10)) :& (_hsb_riskset :== 1))
+        eta_Y = xb_outcome :+ delta * _hsb_treat_ind :+ vY_type[t]
+        nclip = nclip + sum((eta_Y :< -20) :| (eta_Y :> 10))
+    }
+    return(nclip)
 }
 
 // ----------------------------------------------------------------
@@ -234,6 +281,7 @@ void _hsb_run_optimize(string scalar b0_name, real scalar max_iter)
         st_numscalar("__hsb_has_result", 1)
         st_numscalar("__hsb_converged", conv)
         st_numscalar("__hsb_ic", optimize_result_iterations(S))
+        st_numscalar("__hsb_clip", _hsb_count_clips(theta_hat))
 
         // Skip posting V/gradient if they contain missings (singular Hessian
         // at flat spot). The .ado falls through to scaffold-V; ereturn post

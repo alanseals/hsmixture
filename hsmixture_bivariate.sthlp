@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.3  02jul2026}{...}
+{* *! version 2.4.0  14jul2026}{...}
 {vieweralsosee "hsmixture" "help hsmixture"}{...}
 {vieweralsosee "hsmixture_joint" "help hsmixture_joint"}{...}
 {vieweralsosee "hsmixture_joint_postestimation" "help hsmixture_joint_postestimation"}{...}
@@ -32,8 +32,9 @@
 {synoptline}
 {syntab:Model}
 {p2coldent:* {opth id(varname)}}panel identifier (required){p_end}
-{synopt:{opth riskset(varname)}}treatment risk set indicator{p_end}
+{synopt:{opth riskset(varname)}}treatment risk set indicator; required whenever treated persons remain observed after their treatment event (the usual ToE data shape){p_end}
 {synopt:{opth prisk(varname)}}deprecated alias for {opt riskset()} (v2.0.0 back-compat){p_end}
+{synopt:{opth time(varname)}}within-person time variable used by the data-contract checks{p_end}
 {synopt:{opt nst:arts(#)}}number of starting configurations; default is {cmd:nstarts(6)}{p_end}
 
 {syntab:Maximization}
@@ -112,12 +113,33 @@ This is required. Data must be in person-period format.
 {phang}
 {opt treat(varname)} in the second equation specifies the treatment indicator.
 This should be a time-varying dummy equal to 1 in all periods after treatment onset.
+Same-period and lagged switch-on conventions are both accepted; the command
+validates that the indicator is absorbing (never reverts to 0) and never equals
+1 before the person's treatment event (see {helpb hsmixture_joint} for the full
+convention discussion, which applies here unchanged).
 
 {phang}
 {opth riskset(varname)} specifies an indicator variable for observations in the
 treatment risk set. When specified, the treatment equation likelihood contribution
 is computed only for observations where {it:riskset} == 1. The outcome equation
-uses all observations.
+uses all observations. Effectively required: the command errors when
+{opt riskset()} is omitted and any treated person has rows after the treatment
+event (the normal shape of timing-of-events data), and validates that the risk
+set is 1 on the event row and 0 on every row after it. See
+{helpb hsmixture_joint} for the rationale.
+
+{phang}
+{opth time(varname)} supplies the within-person time variable used by the
+data-contract checks (numeric, nonmissing, distinct within id). When omitted,
+the checks use the current row order within id, which is correct when the data
+are sorted by id and time, and the command prints a note when the data are not
+sorted by {opt id()}. {opt time()} does not change the likelihood; the
+estimator itself is order-invariant within person.
+
+{phang}
+{bf:Data contract.} The outcome is absorbing: at most one outcome event per id
+and no estimation rows after the event row. The command validates both and
+errors on violations (see {helpb hsmixture_joint} for details).
 
 {phang}
 {opt nstarts(#)} specifies the number of starting value configurations to try.
@@ -210,11 +232,17 @@ intervals. The default is {cmd:level(95)} or as set by {helpb set level}.
 {synopt:{cmd:e(grad_norm)}}L2 norm of the gradient at the optimum{p_end}
 {synopt:{cmd:e(rel_grad)}}relative gradient norm |gradient|/(1+|LL|) at the optimum{p_end}
 {synopt:{cmd:e(v_pd)}}1 if variance matrix is positive definite, 0 otherwise{p_end}
+{synopt:{cmd:e(v_scaffold)}}1 if {cmd:e(V)} is a placeholder posted after Hessian-inversion failure (SEs meaningless), 0 otherwise{p_end}
+{synopt:{cmd:e(v_mineig)}}smallest eigenvalue of {cmd:e(V)} (the input to the {cmd:e(v_pd)} verdict){p_end}
+{synopt:{cmd:e(clip_hits)}}linear-predictor evaluations at the numerical bounds [-20, 10] at the optimum (0 = exact likelihood everywhere){p_end}
 {synopt:{cmd:e(N_persons)}}number of persons (IID unit; denominator for the person-count BIC){p_end}
 {synopt:{cmd:e(k)}}number of estimated parameters (= colsof(e(b))){p_end}
 {synopt:{cmd:e(rank)}}rank posted for {cmd:e(V)} (design parameter count){p_end}
 {synopt:{cmd:e(df_m)}}model degrees of freedom (design parameter count){p_end}
 {synopt:{cmd:e(ic)}}iteration count for the best starting configuration{p_end}
+{synopt:{cmd:e(n_finite)}}starting configurations that returned a finite log-likelihood{p_end}
+{synopt:{cmd:e(n_bfgs_conv)}}starting configurations whose BFGS run converged on its own criterion{p_end}
+{synopt:{cmd:e(n_aborted)}}starting configurations whose first optimizer run aborted and was retried from a jittered start (see {helpb hsmixture_joint}){p_end}
 {synopt:{cmd:e(delta)}}treatment effect (log hazard ratio){p_end}
 {synopt:{cmd:e(hr)}}hazard ratio exp(delta){p_end}
 {synopt:{cmd:e(hr_ci_lo)}}lower CI bound for hazard ratio (missing if not strictly converged){p_end}
@@ -276,6 +304,20 @@ The four joint probabilities are parameterized via softmax (with pi_{11} as
 the reference category) to ensure they sum to 1 and remain positive.
 
 {pstd}
+{bf:Label switching.} Each dimension's type labels can swap independently
+(v_T2 -> -v_T2 with the treatment constant absorbing the shift and the
+pi rows relabeled; likewise v_Y2 and the pi columns), leaving the likelihood
+unchanged. The sign of the v_T2 or v_Y2 {it:parameter} and the position of
+any single cell in {cmd:e(pi_joint)} are therefore not comparable across
+runs or machines. Quantities that describe the latent joint distribution
+itself are unaffected by relabeling and are comparable: delta and the hazard
+ratio, |v_T2| and |v_Y2| (the spacing of each dimension's mass points), and
+{cmd:e(rho)} {it:including its sign} -- the relabeling is a location shift
+of the latent variable, not a reflection, so the implied correlation is
+identical under either labeling. The certification script scores only
+label-invariant quantities.
+
+{pstd}
 {bf:Implied Correlation}
 
 {pstd}
@@ -315,6 +357,22 @@ and E. Leamer, 3381-3460. Amsterdam: Elsevier.
 {marker version}{...}
 {title:Version history}
 
+{phang}2.4.0  14jul2026  Data-contract hardening and numerical diagnostics,
+    matching hsmixture_joint: absorbing-outcome row check, riskset()
+    effectively required with post-event validation, treat() indicator
+    consistency checks, new time() option (with a note when the data are not
+    sorted by the id variable and time() is omitted), max-shifted softmax for
+    the cell probabilities (likelihood and posted e(pi_joint); algebraically
+    identical, so values agree to floating-point rounding), and new diagnostics
+    e(clip_hits), e(v_scaffold), e(v_mineig), e(n_finite), e(n_bfgs_conv),
+    e(n_aborted). A starting configuration whose optimizer run aborts
+    (numeric-derivative failure near a flat optimum, a knife-edge event under
+    Stata/MP) is now retried once from a jittered start instead of silently
+    killing the remaining configurations (see hsmixture_joint for details).
+    The positive-definiteness verdict is now scale-relative rather than an
+    absolute 1e-8 floor (see hsmixture_joint).
+    The likelihood formulas and estimates on contract-conforming data are
+    unchanged.{p_end}
 {phang}2.3.3  02jul2026  Report the hazard-ratio confidence interval and the
     positive-definite verdict only for strictly converged fits. e(hr_ci_lo) and
     e(hr_ci_hi) are missing and the printed CI shows "not available" otherwise,

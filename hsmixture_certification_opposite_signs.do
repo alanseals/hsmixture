@@ -49,6 +49,19 @@ capture log close _hsmix_opp
 display as txt "Working directory: `c(pwd)'"
 log using "hsmixture_certification_opposite_signs_log.txt", text replace name(_hsmix_opp)
 
+* Provenance record: what code this certification actually ran on. Copy this
+* block's output (plus the package git commit SHA) into CERTIFICATION.md
+* when recording a release-gating run.
+display _n as txt "{hline 70}"
+display as txt "PROVENANCE"
+display as txt "  Run date/time:  `c(current_date)' `c(current_time)'"
+display as txt "  Stata version:  `c(stata_version)' (born `c(born_date)')"
+display as txt "  OS / machine:   `c(os)' / `c(machine_type)'"
+display as txt "  MP / cores:     `c(MP)' / `c(processors)'"
+display as txt "  Command under test:"
+which hsmixture_joint
+display as txt "{hline 70}"
+
 * ============================================================================
 * PART 1: Generate synthetic person-period data with OPPOSITE-SIGNS DGP
 * ============================================================================
@@ -253,6 +266,15 @@ display _n as txt "  Strict convergence (e(converged)==1):  `status_conv'"
 display as txt "    |grad| =" %9.2e `gn'
 display as txt "    |grad|/(1+|LL|) =" %9.2e `rg'
 display as txt "    V positive definite = `pd'"
+* See hsmixture_certification.do for why these two are printed. This fit
+* produced the v_pd=0 verdict on 14jul2026 that prompted the PD
+* investigation. The cause was not the 1e-8 floor. The minimum eigenvalue
+* measured 1.85e-04, four orders of magnitude clear of it. The optimizer had
+* aborted and the .ado posted the I*1e-20 placeholder V, so v_pd=0 was
+* correct. The abort retry (v2.4.0) fixed that symptom. The scale-relative
+* PD test is a separate and independently correct change.
+display as txt "    V min eigenvalue =" %9.2e e(v_mineig)
+display as txt "    V is placeholder/scaffold = " e(v_scaffold)
 
 * ============================================================================
 * PART 3b: Misspecification record — factor(common) on opposite-signs DGP.
@@ -274,16 +296,25 @@ display as txt "close to the simple cloglog HR, possibly with a convergence"
 display as txt "warning. This is the diagnostic users should look for when"
 display as txt "deciding which factor mode their real data wants."
 
-* iterate(200) caps this deliberately-misspecified fit. factor(common) cannot
-* represent opposite-signs heterogeneity, so it never strictly converges and
-* would otherwise grind to the flat-region limit (400+ iterations). The result
-* is an informational misspecification record, not a scored criterion, so the
-* cap only shortens the log; converged=0 and the small/unstable lambda are the
-* diagnostic signature either way.
+* nstarts(1) iterate(30) caps this deliberately-misspecified fit, which is an
+* informational record and NOT a scored criterion. factor(common) cannot
+* represent opposite-signs heterogeneity, so it never strictly converges; it
+* stalls on a flat region where each BFGS iteration degenerates into repeated
+* failed line searches plus a full numeric gradient. Measured cost there on a
+* 4-core Mac (15jul2026): ~48 seconds per iteration, five times the pace of
+* the scored fit above. At the previous budget (6 default starts x 200
+* iterations) this unscored demo could run 16 hours, dwarfing the entire rest
+* of the certification suite. One start and 30 iterations is enough: the
+* diagnostic signature is that the fit does NOT converge and delta collapses
+* toward the naive cloglog, and that is visible immediately. Extra starts and
+* iterations only buy a longer log of the same frozen likelihood. (The
+* 02jul2026 Windows run stopped on its own near iteration 55 via a
+* discontinuous-region abort; that early stop is a machine-dependent accident,
+* not something to rely on -- hence an explicit cap.)
 capture noisily {
     hsmixture_joint (treat_event = x1 pd_*) ///
         (outcome_event = x1 pd_*, treat(treated)) ///
-        , id(id) k(2) factor(common) iterate(200) riskset(treat_at_risk)
+        , id(id) k(2) factor(common) nstarts(1) iterate(30) riskset(treat_at_risk)
 }
 local rc_common = _rc
 

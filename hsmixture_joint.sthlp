@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.3  02jul2026}{...}
+{* *! version 2.4.0  14jul2026}{...}
 {vieweralsosee "hsmixture" "help hsmixture"}{...}
 {vieweralsosee "hsmixture_bivariate" "help hsmixture_bivariate"}{...}
 {vieweralsosee "hsmixture_joint_postestimation" "help hsmixture_joint_postestimation"}{...}
@@ -38,8 +38,9 @@
 {syntab:Model}
 {p2coldent:* {opth id(varname)}}panel identifier (required){p_end}
 {synopt:{opt k(#)}}number of mass points; default is {cmd:k(2)}{p_end}
-{synopt:{opth riskset(varname)}}treatment risk set indicator{p_end}
+{synopt:{opth riskset(varname)}}treatment risk set indicator; required whenever treated persons remain observed after their treatment event (the usual ToE data shape){p_end}
 {synopt:{opth prisk(varname)}}deprecated alias for {opt riskset()} (v2.0.0 back-compat){p_end}
+{synopt:{opth time(varname)}}within-person time variable used by the data-contract checks{p_end}
 {synopt:{opt fact:or(name)}}heterogeneity factor structure: {cmd:common} or {cmd:separate} (default){p_end}
 
 {syntab:Maximization}
@@ -186,12 +187,43 @@ This should be a time-varying dummy equal to 1 in all periods after treatment on
 The treatment effect delta measures the shift in the outcome hazard when this
 indicator switches from 0 to 1.
 
+{pmore}
+{bf:Timing convention.} delta applies exactly where the indicator equals 1, so
+the switch-on convention is the user's modeling choice: same-period (treated=1
+in the event period) and lagged (treated=1 starting the following period, the
+no-anticipation convention used in this package's certification scripts) are
+both accepted. The command validates that the indicator is absorbing (never
+reverts to 0) and never equals 1 before the person's treatment event, and
+errors otherwise. Persons who enter the sample already treated (all rows
+treated=1, no event row) are accepted; their treatment timing simply does not
+contribute to the treatment equation. Persons who {it:switch} to treated with
+no event row in the estimation sample trigger a warning, not an error --
+verify their event rows were excluded intentionally.
+
 {phang}
 {opth riskset(varname)} specifies an indicator variable for observations in the
 treatment risk set. When specified, the treatment equation likelihood contribution
 is computed only for observations where {it:riskset} == 1. The outcome equation
 uses all observations. This is useful when treatment eligibility is conditional
 (e.g., only certain individuals are at risk for the treatment in certain periods).
+
+{pmore}
+{bf:Effectively required.} The model assumes one-time treatment. Without
+{opt riskset()}, every estimation row enters the treatment-equation likelihood
+as an at-risk period, including a treated person's post-event rows -- a silent
+mis-specification that biases the loadings and mixture. The command therefore
+errors when {opt riskset()} is omitted and any treated person has rows after
+the treatment event (which is the normal shape of timing-of-events data). The
+risk set must be 1 on the event row itself and 0 on every row after it; both
+are validated. Rows with riskset = 0 {it:before} the event (delayed
+eligibility) are allowed.
+
+{phang}
+{opth time(varname)} supplies the within-person time variable used by the
+data-contract checks (numeric, nonmissing, distinct within id). When omitted,
+the checks use the current row order within id, which is correct when the data
+are sorted by id and time. {opt time()} does not change the likelihood; the
+estimator itself is order-invariant within person.
 
 {phang}
 {opt factor(name)} selects the heterogeneity factor structure. Two values:
@@ -229,6 +261,18 @@ starting values are obtained from separate cloglog GLMs for each equation.
 {opt iterate(#)} specifies the maximum number of iterations. Default is 100.
 Joint models often require 200+ iterations. The Mata-accelerated optimizer
 uses BFGS with automatic tolerance settings.
+
+{pmore}
+{bf:Optimizer-abort recovery.} Mata's {cmd:optimize()} can abort outright
+("could not calculate numerical derivatives") when a numeric-derivative probe
+degenerates near a flat optimum. Under Stata/MP the arithmetic path varies
+run to run, so the abort is a knife-edge event rather than a property of the
+data or the likelihood, which is finite everywhere. When a starting
+configuration aborts, the command resets its Mata cache and retries that
+configuration once from a deterministically jittered start (the vector scaled
+by 1.001); a second abort is treated as a failed configuration and the
+multistart continues, so a single abort cannot terminate the run.
+{cmd:e(n_aborted)} counts configurations that needed the retry.
 
 {phang}
 {opt difficult}, {opt trace}, {opt gradient}, {opt hessian},
@@ -360,13 +404,19 @@ suggest sensitivity to heterogeneity specification. Report the range.
 {synopt:{cmd:e(grad_norm)}}L2 norm of the gradient at the optimum{p_end}
 {synopt:{cmd:e(rel_grad)}}relative gradient norm |gradient|/(1+|LL|) at the optimum{p_end}
 {synopt:{cmd:e(v_pd)}}1 if variance matrix is positive definite, 0 otherwise{p_end}
+{synopt:{cmd:e(v_scaffold)}}1 if {cmd:e(V)} is a placeholder posted after Hessian-inversion failure (SEs meaningless), 0 otherwise{p_end}
+{synopt:{cmd:e(v_mineig)}}smallest eigenvalue of {cmd:e(V)} (the input to the {cmd:e(v_pd)} verdict){p_end}
+{synopt:{cmd:e(clip_hits)}}linear-predictor evaluations at the numerical bounds [-20, 10] at the optimum (0 = exact likelihood everywhere){p_end}
 {synopt:{cmd:e(N_persons)}}number of persons (IID unit; denominator for the person-count BIC){p_end}
 {synopt:{cmd:e(k)}}number of estimated parameters (= colsof(e(b))); distinct from {cmd:e(K)} mass points{p_end}
 {synopt:{cmd:e(rank)}}rank posted for {cmd:e(V)} (design parameter count){p_end}
 {synopt:{cmd:e(df_m)}}model degrees of freedom (design parameter count){p_end}
 {synopt:{cmd:e(ic)}}iteration count for the best starting configuration{p_end}
 {synopt:{cmd:e(n_starts)}}number of starting configurations tried{p_end}
-{synopt:{cmd:e(best_start)}}index of the starting configuration with best LL{p_end}
+{synopt:{cmd:e(n_finite)}}starting configurations that returned a finite log-likelihood{p_end}
+{synopt:{cmd:e(n_bfgs_conv)}}starting configurations whose BFGS run converged on its own criterion{p_end}
+{synopt:{cmd:e(n_aborted)}}starting configurations whose first optimizer run aborted and was retried from a jittered start (see {it:Maximization}){p_end}
+{synopt:{cmd:e(best_start)}}index of the starting configuration with best LL. Selection is by best {it:finite} log-likelihood regardless of per-start convergence; the selected start's convergence status is reported in {cmd:e(converged)} / {cmd:e(converged_bfgs)}{p_end}
 {synopt:{cmd:e(delta)}}treatment effect (log hazard ratio){p_end}
 {synopt:{cmd:e(hr)}}hazard ratio exp(delta){p_end}
 {synopt:{cmd:e(hr_ci_lo)}}lower CI bound for hazard ratio (missing if not strictly converged){p_end}
@@ -493,6 +543,22 @@ type-2 risk shift in the treatment equation should know that under v_2=1,
 lambda_T and the type-2 risk shift coincide.
 
 {pstd}
+{bf:Label switching in practice (K=2).} The likelihood is exactly invariant
+under swapping the type labels: (pi_1 <-> pi_2, lambda_T -> -lambda_T,
+lambda_Y -> -lambda_Y) with each equation's constant absorbing the shift
+(cons -> cons + lambda). Both labelings are the same mixture and the same
+maximum, and the optimizer can terminate at either depending on starting
+values and the platform's floating-point path. Consequently the {it:individual}
+signs of the loadings, the identity of "type 2", and the specific value of
+pi_2 are not comparable across runs or machines. What is identified and
+stable: delta and the hazard ratio, the loading {it:magnitudes}
+|lambda_T| and |lambda_Y|, the {it:relative} sign of the two loadings (a
+swap flips both together, so same-sign vs opposite-sign structure is
+preserved), the mass-point spacing, and the {it:unordered} mixture shares
+{c -(}pi_1, pi_2{c )-}. Report and compare those quantities. The
+certification scripts score only these invariants for the same reason.
+
+{pstd}
 {bf:Connection to Continuous-Time MPH}
 
 {pstd}
@@ -558,6 +624,34 @@ and E. Leamer, 3381-3460. Amsterdam: Elsevier.
 {marker version}{...}
 {title:Version history}
 
+{phang}2.4.0  14jul2026  Data-contract hardening and numerical diagnostics.
+    New row-level validations: (i) errors when estimation rows follow a
+    person's outcome event (absorbing-outcome contract; such rows previously
+    entered the likelihood silently); (ii) errors when riskset() is omitted
+    and treated persons have post-event rows, and validates riskset()=0 on
+    all post-event rows when supplied (one-time-treatment contract); (iii)
+    validates the treat() indicator is absorbing and never precedes its own
+    event, warning on switches with no event row in sample. New time()
+    option supplies explicit within-person order for these checks; when it is
+    omitted the checks read the current row order and the command notes when
+    the data are not sorted by the id variable. Mixture probabilities computed
+    via max-shifted softmax (overflow-safe; algebraically identical, so values
+    agree to floating-point rounding). New
+    diagnostics e(clip_hits), e(v_scaffold), e(v_mineig), e(n_finite),
+    e(n_bfgs_conv), e(n_aborted); multistart log now reports finite and
+    BFGS-converged start counts, and the no-result error message distinguishes
+    optimization failure from convergence warnings. A starting configuration
+    whose optimizer run aborts (numeric-derivative failure near a flat
+    optimum, a knife-edge event under Stata/MP) is now retried once from a
+    jittered start instead of silently killing the remaining configurations.
+    The positive-definiteness verdict behind e(converged) and e(v_pd) is now
+    scale-relative (min eigenvalue > 0 and > 1e-12 of the max) instead of an
+    absolute 1e-8 floor, which was scale-dependent and conflated a genuinely
+    ill-conditioned V with the I*1e-20 placeholder posted when Hessian
+    inversion fails; placeholder V matrices are now excluded explicitly via
+    e(v_scaffold).
+    The likelihood formulas and estimates on contract-conforming data are
+    unchanged.{p_end}
 {phang}2.3.3  02jul2026  Report the hazard-ratio confidence interval and the
     positive-definite verdict only for strictly converged fits. e(hr_ci_lo) and
     e(hr_ci_hi) are missing and the printed CI shows "not available" otherwise,

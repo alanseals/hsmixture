@@ -13,11 +13,14 @@
 *!     if separate-mode estimation systematically distorted the loadings,
 *!     factor(common) would not be a defensible restriction.
 *!
-*! Pass criteria (Part A, common mode):
+*! Pass criteria (Part A, common mode). The loading's SIGN and the type
+*! labels are not identified (the likelihood is invariant under
+*! pi_1 <-> pi_2 with lambda -> -lambda and the constants absorbing), so
+*! the criteria score magnitude and the unordered share:
 *!   - e(converged) == 1 (BFGS + relative gradient + V positive definite)
-*!   - |delta_hat - 0.5| < 3 * SE(delta)
-*!   - |lambda_hat - 1.0| < 3 * SE(lambda)
-*!   - 0.30 < pi_2_hat < 0.60  (true 0.45)
+*!   - |delta_hat - 0.5| < 3 * SE(delta)   (delta IS identified)
+*!   - ||lambda_hat| - 1.0| < 3 * SE(lambda)   (magnitude)
+*!   - 0.30 < min(pi_1_hat, pi_2_hat) < 0.60  (true unordered share 0.45)
 *!
 *! Note on DGP strength: a previous version of this script used
 *! sigma_true = 0.7 (matching the lambda_T_true in the existing same-signs
@@ -45,6 +48,19 @@ set more off
 capture log close _hsmix_common
 display as txt "Working directory: `c(pwd)'"
 log using "hsmixture_certification_common_log.txt", text replace name(_hsmix_common)
+
+* Provenance record: what code this certification actually ran on. Copy this
+* block's output (plus the package git commit SHA) into CERTIFICATION.md
+* when recording a release-gating run.
+display _n as txt "{hline 70}"
+display as txt "PROVENANCE"
+display as txt "  Run date/time:  `c(current_date)' `c(current_time)'"
+display as txt "  Stata version:  `c(stata_version)' (born `c(born_date)')"
+display as txt "  OS / machine:   `c(os)' / `c(machine_type)'"
+display as txt "  MP / cores:     `c(MP)' / `c(processors)'"
+display as txt "  Command under test:"
+which hsmixture_joint
+display as txt "{hline 70}"
 
 * ============================================================================
 * PART 1: Generate synthetic person-period data
@@ -180,10 +196,19 @@ local pi_2_A      = e(pi)[1, 2]
 local se_delta_A  = _se[/delta]
 local se_lambda_A = _se[/lambda]
 
+* Label-swap invariance (see hsmixture_certification.do for the full
+* statement). The likelihood is invariant under (pi_1 <-> pi_2, lambda ->
+* -lambda, cons -> cons + lambda), so the SIGN of the shared loading and
+* the type labels are not identified and BFGS may terminate at either
+* labeling. Score the magnitude and the unordered share. Under
+* factor(common) there is a single loading, so unlike the separate-mode
+* certs there is no relative sign to test.
 local pass_conv_A   = (`conv_A' == 1)
 local pass_delta_A  = abs(`delta_A' - `delta_true') < 3 * `se_delta_A'
-local pass_lambda_A = abs(`lambda_A' - `sigma_true') < 3 * `se_lambda_A'
-local pass_pi_A     = (`pi_2_A' > 0.30) & (`pi_2_A' < 0.60)
+local pass_lambda_A = abs(abs(`lambda_A') - abs(`sigma_true')) < 3 * `se_lambda_A'
+local pi_1_A        = 1 - `pi_2_A'
+local pi_min_A      = min(`pi_1_A', `pi_2_A')
+local pass_pi_A     = (`pi_min_A' > 0.30) & (`pi_min_A' < 0.60)
 
 display _n as txt "{hline 70}"
 display as txt "PART A RESULTS (factor(common) on common-loading DGP)"
@@ -196,18 +221,25 @@ local status_delta_A = cond(`pass_delta_A', "{res}PASS", "{err}FAIL")
 display as txt "  delta (treatment effect)" _col(35) %8.4f `delta_A' ///
     "  " %6.4f `se_delta_A' "  " %6.2f `delta_true' "    `status_delta_A'"
 
+display as txt "  Labeling reached: lambda =" %8.4f `lambda_A' ///
+    ", pi_2 =" %6.4f `pi_2_A' "  (sign and labels not identified)"
+
 local status_lambda_A = cond(`pass_lambda_A', "{res}PASS", "{err}FAIL")
-display as txt "  lambda (shared loading)" _col(35) %8.4f `lambda_A' ///
-    "  " %6.4f `se_lambda_A' "  " %6.2f `sigma_true' "    `status_lambda_A'"
+display as txt "  |lambda| (shared loading)" _col(35) %8.4f abs(`lambda_A') ///
+    "  " %6.4f `se_lambda_A' "  " %6.2f abs(`sigma_true') "    `status_lambda_A'"
 
 local status_pi_A = cond(`pass_pi_A', "{res}PASS", "{err}FAIL")
-display as txt "  pi_2 (high-type share)" _col(35) %8.4f `pi_2_A' ///
-    "       --   " %6.2f (1 - `pi_1_true') "    `status_pi_A'"
+display as txt "  min(pi_1, pi_2)" _col(35) %8.4f `pi_min_A' ///
+    "       --   " %6.2f min(`pi_1_true', 1 - `pi_1_true') "    `status_pi_A'"
 
 local status_conv_A = cond(`pass_conv_A', "{res}PASS", "{err}FAIL")
 display _n as txt "  Strict convergence (e(converged)==1):  `status_conv_A'"
 display as txt "    Gradient norm =" %9.2e `gn_A'
+display as txt "    |grad|/(1+|LL|) =" %9.2e e(rel_grad)
 display as txt "    V positive definite = `pd_A'"
+* See hsmixture_certification.do for why these two are printed.
+display as txt "    V min eigenvalue =" %9.2e e(v_mineig)
+display as txt "    V is placeholder/scaffold = " e(v_scaffold)
 
 local n_pass_A = `pass_conv_A' + `pass_delta_A' + `pass_lambda_A' + `pass_pi_A'
 

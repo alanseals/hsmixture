@@ -1,4 +1,4 @@
-*! version 2.3.3  02jul2026
+*! version 2.4.0  14jul2026
 *! Heckman-Singer Mixture Model - Single Equation
 *! Discrete-time hazard model with unobserved heterogeneity
 *! Mata-accelerated likelihood evaluator
@@ -23,6 +23,7 @@ program hsmixture, eclass sortpreserve
     syntax varlist(min=1) [if] [in], ///
         ID(varname) ///
         [K(integer 2) ///
+         TIME(varname) ///
          FROM(name) ///
          ITERate(integer 200) ///
          noLOG ///
@@ -57,6 +58,58 @@ program hsmixture, eclass sortpreserve
         exit 198
     }
 
+    * Within-person ordering for the absorbing-outcome row check below.
+    * When time() is supplied, order by it (validated numeric, nonmissing,
+    * unique within id). Otherwise use the incoming row order, which the
+    * data contract (sorted by id and time) makes meaningful. Captured HERE,
+    * before any bysort below re-sorts the data: sortpreserve restores the
+    * user's order on exit, but bysort changes it during execution and an
+    * unstable sort can scramble within-id order.
+    tempvar __hs_ord
+    if "`time'" != "" {
+        capture confirm numeric variable `time'
+        if _rc {
+            display as error "time() variable `time' must be numeric"
+            exit 198
+        }
+        capture assert !missing(`time') if `touse'
+        if _rc {
+            display as error ///
+                "time() variable `time' has missing values in the estimation sample"
+            exit 198
+        }
+        tempvar __hs_tdup
+        quietly bysort `id' `time': egen double `__hs_tdup' = total(`touse')
+        capture assert `__hs_tdup' <= 1 if `touse'
+        if _rc {
+            display as error ///
+                "time() variable `time' has duplicate values within id in the estimation sample"
+            display as error ///
+                "  each person-period must have a distinct time value"
+            exit 198
+        }
+        drop `__hs_tdup'
+        quietly gen double `__hs_ord' = `time'
+    }
+    else {
+        * No time() supplied: see hsmixture_joint.ado for the rationale. A
+        * sort key that does not begin with `id' means row order carries no
+        * time information, so the contract check below cannot be trusted.
+        local __hs_sortkey : sortedby
+        local __hs_s1 = word("`__hs_sortkey'", 1)
+        if "`__hs_s1'" != "`id'" {
+            display as txt ///
+                "note: the data are not sorted by `id'. The absorbing-outcome check reads"
+            display as txt ///
+                "  within-person order from the current row order. If rows are not in time"
+            display as txt ///
+                "  order within `id', sort the data or supply time(varname); otherwise the"
+            display as txt ///
+                "  check may miss a malformed panel. The likelihood itself is unaffected."
+        }
+        quietly gen double `__hs_ord' = _n
+    }
+
     * Stage 3: data-contract validation. Errors on violations.
     capture assert inlist(`depvar', 0, 1) if `touse'
     if _rc {
@@ -77,6 +130,37 @@ program hsmixture, eclass sortpreserve
         exit 198
     }
     drop `__hs_evcount'
+
+    * Absorbing-outcome ROW contract (v2.4.0). The likelihood treats every
+    * estimation row as an at-risk period, so any row AFTER a person's
+    * outcome event would contribute spurious survival terms and bias the
+    * estimates. Enforce: the event row, when present, is the person's last
+    * estimation row.
+    tempvar __hs_evord
+    quietly bysort `id': egen double `__hs_evord' = ///
+        min(cond(`depvar' == 1 & `touse', `__hs_ord', .))
+    capture assert missing(`__hs_evord') | `__hs_ord' <= `__hs_evord' if `touse'
+    if _rc {
+        display as error ///
+            "estimation-sample rows occur after the outcome event for some id"
+        display as error ///
+            "  hsmixture assumes an absorbing outcome: a person's rows must stop at the"
+        display as error ///
+            "  event row. Rows after the event enter the likelihood as spurious at-risk"
+        display as error ///
+            "  periods and bias the estimates. Drop post-event rows before estimating."
+        if "`time'" != "" {
+            display as error "  Ordering used: time(`time')."
+        }
+        else {
+            display as error ///
+                "  Ordering used: current row order within id. If the data are not sorted"
+            display as error ///
+                "  by id and time, sort them first or supply the time() option."
+        }
+        exit 198
+    }
+    drop `__hs_ord' `__hs_evord'
 
     * Compile Mata functions (silently skips if already loaded)
     capture findfile hsmixture_mata.do
@@ -154,23 +238,56 @@ program hsmixture, eclass sortpreserve
     capture mata: _hs_cleanup()
 
     * Run Mata optimizer
+    local n_aborted = 0
     matrix __hs_start = `b0'
     scalar __hs_has_result = 0
     scalar __hs_converged = 0
 
     capture noisily mata: _hs_run_optimize("__hs_start", `iterate')
+    local __mata_rc = _rc
+
+    * Optimizer-abort recovery (v2.4.0). See hsmixture_joint.ado for the full
+    * rationale: a numeric-derivative abort near a flat optimum is a knife-edge
+    * event under Stata/MP's run-to-run arithmetic variation, not a property of
+    * the likelihood. This command runs a single start, so without the retry an
+    * abort would kill the whole fit. Reset the cache and retry once from a
+    * deterministically jittered vector.
+    if `__mata_rc' != 0 {
+        local n_aborted = 1
+        if "`log'" != "nolog" {
+            display as txt ///
+                "optimizer aborted (rc=`__mata_rc'); retrying from a jittered start"
+        }
+        capture mata: _hs_cleanup()
+        matrix __hs_start = `b0' * 1.001
+        scalar __hs_has_result = 0
+        scalar __hs_converged = 0
+        capture noisily mata: _hs_run_optimize("__hs_start", `iterate')
+    }
 
     * Check results
     capture confirm scalar __hs_has_result
     if _rc != 0 | scalar(__hs_has_result) != 1 {
-        display as error "Optimization failed to converge"
+        display as error ///
+            "optimization produced no usable result (non-finite log-likelihood)"
+        display as error ///
+            "  (this is an optimization failure, not a convergence warning; try"
+        display as error ///
+            "  different starting values via from() or a simpler specification)"
         exit 430
     }
 
     local best_ll = scalar(__hs_ll)
     local best_converged = scalar(__hs_converged)
     local best_ic = scalar(__hs_ic)
+    * Clip-hit count at the optimum (posted by Mata; see _hs_count_clips).
+    local best_clip = .
+    capture confirm scalar __hs_clip
+    if _rc == 0 {
+        local best_clip = scalar(__hs_clip)
+    }
     matrix __hs_best_b = __hs_b
+    local best_v_scaffold = 0
     capture confirm matrix __hs_V
     if _rc == 0 {
         matrix __hs_best_V = __hs_V
@@ -178,9 +295,12 @@ program hsmixture, eclass sortpreserve
     else {
         * Hessian inversion failed. Post a finite scaffold V so `ereturn post`
         * succeeds (Stata rejects all-missing V). Callers should gate on
-        * e(converged)==1 before trusting SEs.
+        * e(converged)==1 before trusting SEs. e(v_scaffold)=1 flags this
+        * placeholder so the two failure modes (genuinely non-PD Hessian vs
+        * no invertible Hessian at all) are distinguishable downstream.
         local _np = colsof(__hs_best_b)
         matrix __hs_best_V = I(`_np') * 1e-20
+        local best_v_scaffold = 1
     }
     capture confirm matrix __hs_g
     if _rc == 0 {
@@ -188,7 +308,7 @@ program hsmixture, eclass sortpreserve
     }
 
     capture matrix drop __hs_start __hs_b __hs_V __hs_g
-    capture scalar drop __hs_ll __hs_has_result __hs_converged __hs_ic
+    capture scalar drop __hs_ll __hs_has_result __hs_converged __hs_ic __hs_clip
 
     * ----------------------------------------------------------------
     * Post results to ereturn
@@ -258,12 +378,25 @@ program hsmixture, eclass sortpreserve
         local strict_converged = 0
     }
 
+    * Scale-relative positive-definiteness (v2.4.0); see hsmixture_joint.ado
+    * for the rationale and the nondeterministic-verdict evidence that
+    * motivated replacing the absolute 1e-8 floor.
+    local v_mineig = .
     capture mata: st_numscalar("__hs_meig", min(Re(eigenvalues(st_matrix("e(V)")))))
-    if _rc == 0 {
-        if !missing(scalar(__hs_meig)) & scalar(__hs_meig) > 1e-8 local v_pd = 1
+    local __rc_eig = _rc
+    capture mata: st_numscalar("__hs_xeig", max(Re(eigenvalues(st_matrix("e(V)")))))
+    if `__rc_eig' == 0 & _rc == 0 {
+        if !missing(scalar(__hs_meig)) local v_mineig = scalar(__hs_meig)
+        if !missing(scalar(__hs_meig)) & !missing(scalar(__hs_xeig)) {
+            if scalar(__hs_meig) > 0 & ///
+                scalar(__hs_meig) > 1e-12 * scalar(__hs_xeig) {
+                local v_pd = 1
+            }
+        }
     }
+    if `best_v_scaffold' local v_pd = 0
     if !`v_pd' local strict_converged = 0
-    capture scalar drop __hs_meig
+    capture scalar drop __hs_meig __hs_xeig
 
     * Store estimation results
     ereturn local cmd "hsmixture"
@@ -283,6 +416,10 @@ program hsmixture, eclass sortpreserve
     ereturn scalar grad_norm = `grad_norm'
     ereturn scalar rel_grad = `rel_grad'
     ereturn scalar v_pd = `v_pd'
+    ereturn scalar v_scaffold = `best_v_scaffold'
+    ereturn scalar v_mineig = `v_mineig'
+    ereturn scalar clip_hits = `best_clip'
+    ereturn scalar n_aborted = `n_aborted'
     ereturn scalar ic = `best_ic'
 
     * Post gradient at optimum (consumed by postestimation diagnostics)
@@ -299,17 +436,24 @@ program hsmixture, eclass sortpreserve
     ereturn scalar lambda = `lambda'
     ereturn scalar sigma = `lambda'
 
-    * Compute mixture probabilities
-    tempname sum_exp_eta pi
-    scalar `sum_exp_eta' = 1
+    * Compute mixture probabilities via max-shifted softmax. Subtracting the
+    * largest logit before exponentiating prevents overflow when a mixture
+    * logit is large; the shift cancels in the ratio (eta_1 = 0 is the
+    * reference logit).
+    tempname max_eta sum_exp_eta pi
+    scalar `max_eta' = 0
     forvalues j = 2/`k' {
-        scalar `sum_exp_eta' = `sum_exp_eta' + exp(_b[/eta_`j'])
+        scalar `max_eta' = max(`max_eta', _b[/eta_`j'])
+    }
+    scalar `sum_exp_eta' = exp(0 - `max_eta')
+    forvalues j = 2/`k' {
+        scalar `sum_exp_eta' = `sum_exp_eta' + exp(_b[/eta_`j'] - `max_eta')
     }
 
     matrix `pi' = J(1, `k', .)
-    matrix `pi'[1, 1] = 1 / `sum_exp_eta'
+    matrix `pi'[1, 1] = exp(0 - `max_eta') / `sum_exp_eta'
     forvalues j = 2/`k' {
-        matrix `pi'[1, `j'] = exp(_b[/eta_`j']) / `sum_exp_eta'
+        matrix `pi'[1, `j'] = exp(_b[/eta_`j'] - `max_eta') / `sum_exp_eta'
     }
     ereturn matrix pi = `pi'
 
@@ -338,7 +482,7 @@ program hsmixture, eclass sortpreserve
     capture mata: _hs_cleanup()
     capture macro drop HS_K HS_id HS_depvar HS_nolog HS_xvars_mata
     capture matrix drop __hs_start __hs_b __hs_V __hs_g __hs_best_b __hs_best_V __hs_best_g
-    capture scalar drop __hs_ll __hs_has_result __hs_converged __hs_ic
+    capture scalar drop __hs_ll __hs_has_result __hs_converged __hs_ic __hs_clip
 
     if `rc' {
         exit `rc'
@@ -366,12 +510,29 @@ program Display
         }
         if e(v_pd) == 0 {
             display as err "  Variance matrix is not positive definite."
+            if e(v_scaffold) == 1 {
+                display as err ///
+                    "  (Hessian inversion failed; a placeholder variance matrix was posted.)"
+            }
         }
         if e(converged_bfgs) == 0 {
             display as err "  BFGS did not reach its own convergence criterion."
         }
         display as err "  Estimates may be unreliable."
         display as err "{hline 78}"
+    }
+
+    * Numerical-clip diagnostic. The likelihood truncates each linear
+    * predictor to [-20, 10] for overflow safety; a nonzero count at the
+    * optimum means part of the fitted surface is the clipped (approximate)
+    * likelihood rather than the exact cloglog likelihood.
+    if e(clip_hits) > 0 & e(clip_hits) < . {
+        display _n as txt "note: " as res %12.0fc e(clip_hits) ///
+            as txt " linear-predictor evaluations hit the numerical bounds"
+        display as txt ///
+            "  [-20, 10] at the optimum. Estimates whose fitted hazards sit at the"
+        display as txt ///
+            "  bounds are governed by the clipped likelihood; treat them with caution."
     }
 
     * Display coefficients

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.3  02jul2026}{...}
+{* *! version 2.4.0  14jul2026}{...}
 {vieweralsosee "hsmixture_joint" "help hsmixture_joint"}{...}
 {vieweralsosee "hsmixture_bivariate" "help hsmixture_bivariate"}{...}
 {viewerjumpto "Syntax" "hsmixture_joint_postestimation##syntax"}{...}
@@ -182,6 +182,10 @@ non-converged fit are not interpretable.
 
 {title:Version history}
 
+{phang}2.4.0  14jul2026  Coordinated package version bump. No functional
+    change to this command; see hsmixture, hsmixture_joint, and
+    hsmixture_bivariate for the v2.4.0 data-contract validations and
+    numerical diagnostics.{p_end}
 {phang}2.3.3  02jul2026  Report the hazard-ratio confidence interval and the
     positive-definite verdict only for strictly converged fits. e(hr_ci_lo) and
     e(hr_ci_hi) are missing and the printed CI shows "not available" otherwise,

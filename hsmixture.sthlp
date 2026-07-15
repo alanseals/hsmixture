@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.3.3  02jul2026}{...}
+{* *! version 2.4.0  14jul2026}{...}
 {vieweralsosee "hsmixture_joint" "help hsmixture_joint"}{...}
 {vieweralsosee "hsmixture_bivariate" "help hsmixture_bivariate"}{...}
 {vieweralsosee "glm" "help glm"}{...}
@@ -33,6 +33,7 @@
 {syntab:Model}
 {p2coldent:* {opth id(varname)}}panel identifier (required){p_end}
 {synopt:{opt k(#)}}number of mass points; default is {cmd:k(2)}{p_end}
+{synopt:{opth time(varname)}}within-person time variable used by the data-contract checks{p_end}
 
 {syntab:Maximization}
 {synopt:{opt from(matname)}}initial values{p_end}
@@ -68,6 +69,14 @@ the discrete-time analog of the continuous-time proportional hazard model
 {pstd}
 {bf:Note:} Factor variables ({cmd:i.varname}) are not supported. Users should
 create dummy variables manually, e.g., {cmd:tab period, gen(pd_)}.
+
+{pstd}
+{bf:Data contract.} The outcome is absorbing, and the likelihood treats every
+estimation row as an at-risk period. Each person's rows must therefore stop at
+the outcome event row: at most one event per id, and no rows after the event.
+The command validates both and exits with an error on violations. Within-person
+order for the check comes from {opt time()} when supplied, otherwise from the
+current row order (so keep the data sorted by id and time, as required).
 
 
 {marker methodology}{...}
@@ -116,6 +125,13 @@ solutions. Whether a given K is identified
 depends on the data, not the package. Report results only when
 {cmd:e(converged) == 1}. The command warns when BFGS did not converge, the
 relative gradient is too large, or the variance matrix is not positive definite.
+
+{phang}
+{opth time(varname)} supplies the within-person time variable used by the
+data-contract checks (numeric, nonmissing, distinct within id). When omitted,
+the checks use the current row order within id, which is correct when the data
+are sorted by id and time. {opt time()} does not change the likelihood; the
+estimator itself is order-invariant within person.
 
 {dlgtab:Maximization}
 
@@ -201,6 +217,10 @@ fit's own output.{p_end}
 {synopt:{cmd:e(converged_bfgs)}}BFGS optimizer's own convergence flag{p_end}
 {synopt:{cmd:e(grad_norm)}}L2 norm of the gradient at the optimum{p_end}
 {synopt:{cmd:e(v_pd)}}1 if variance matrix is positive definite, 0 otherwise{p_end}
+{synopt:{cmd:e(v_scaffold)}}1 if {cmd:e(V)} is a placeholder posted after Hessian-inversion failure (SEs meaningless), 0 otherwise{p_end}
+{synopt:{cmd:e(v_mineig)}}smallest eigenvalue of {cmd:e(V)} (the input to the {cmd:e(v_pd)} verdict){p_end}
+{synopt:{cmd:e(clip_hits)}}linear-predictor evaluations at the numerical bounds [-20, 10] at the optimum (0 = exact likelihood everywhere){p_end}
+{synopt:{cmd:e(n_aborted)}}1 if the first optimizer run aborted and was retried from a jittered start, 0 otherwise (see {helpb hsmixture_joint}){p_end}
 {synopt:{cmd:e(N_persons)}}number of persons (IID unit; denominator for the person-count BIC){p_end}
 {synopt:{cmd:e(ic)}}iteration count at the best optimum{p_end}
 {synopt:{cmd:e(rank)}}rank posted for {cmd:e(V)} (design parameter count){p_end}
@@ -262,6 +282,16 @@ rescaling redundancy that interfered with identification. Under v_2=1,
 lambda is the type-2 risk shift and the legacy {cmd:e(sigma)} alias points
 to the same value.
 
+{pstd}
+{bf:Label switching in practice (K=2).} The likelihood is exactly invariant
+under swapping the type labels: (pi_1 <-> pi_2, lambda -> -lambda) with the
+constant absorbing the shift (cons -> cons + lambda). Both labelings are the
+same mixture and the same maximum, and the optimizer can terminate at either
+depending on starting values and the platform's floating-point path. The
+{it:sign} of lambda, the identity of "type 2", and the specific value of
+pi_2 are therefore not comparable across runs or machines; |lambda| and the
+unordered shares {c -(}pi_1, pi_2{c )-} are. Report and compare those.
+
 
 {marker references}{...}
 {title:References}
@@ -308,11 +338,26 @@ and E. Leamer, 3381-3460. Amsterdam: Elsevier.
 {marker version}{...}
 {title:Version history}
 
-{phang}2.3.3  02jul2026  Report the hazard-ratio confidence interval and the
-    positive-definite verdict only for strictly converged fits. e(hr_ci_lo) and
-    e(hr_ci_hi) are missing and the printed CI shows "not available" otherwise,
-    and the postestimation positive-definite check honors e(v_pd) or a >1e-8
-    floor. Mata numerical core unchanged, so point estimates are unaffected.{p_end}
+{phang}2.4.0  14jul2026  Data-contract hardening and numerical diagnostics.
+    New absorbing-outcome row check errors when estimation rows follow a
+    person's outcome event (previously such rows silently entered the
+    likelihood as spurious at-risk periods). New time() option supplies
+    explicit within-person order for the check; when it is omitted the check
+    reads the current row order and the command notes when the data are not
+    sorted by the id variable. Mixture probabilities now computed via
+    max-shifted softmax (overflow-safe; algebraically identical, so values
+    agree to floating-point rounding). An optimizer run that aborts
+    (numeric-derivative failure near a flat optimum, a knife-edge event under
+    Stata/MP) is now retried once from a jittered start; e(n_aborted) records
+    it. The positive-definiteness verdict is now scale-relative rather than an
+    absolute 1e-8 floor (see hsmixture_joint). New diagnostics e(clip_hits), e(v_scaffold),
+    e(v_mineig). The likelihood formulas and estimates on contract-conforming
+    data are unchanged.{p_end}
+{phang}2.3.3  02jul2026  Coordinated package version bump. The strict-convergence
+    gating of the hazard-ratio confidence interval applies to hsmixture_joint and
+    hsmixture_bivariate; this single-equation command estimates no treatment
+    effect and posts no CI, so it is unaffected. Mata numerical core
+    unchanged.{p_end}
 {phang}2.3.2  30jun2026  Coordinated package version bump. No functional change
     to this command; see hsmixture_bivariate for an e(rho) calculation fix.{p_end}
 {phang}2.3.1  07may2026  Markout of covariates moved before data-contract

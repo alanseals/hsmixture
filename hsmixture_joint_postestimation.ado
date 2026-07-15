@@ -1,4 +1,4 @@
-*! version 2.3.3  02jul2026
+*! version 2.4.0  14jul2026
 *! Heckman-Singer Joint ToE Model - Postestimation Diagnostics
 *! Convergence checks, mixture-distribution summary, and model comparison.
 *! Adapts display under factor(common) when called after hsmixture_joint.
@@ -122,11 +122,20 @@ program hsmixture_joint_postestimation, rclass
 
         if `vcov_ok' == 1 {
             * Match the estimation-time convergence gate. Each estimator posts a
-            * scaffold V = I*1e-20 when Hessian inversion fails and rejects it
-            * with a min-eigenvalue > 1e-8 test (setting e(v_pd)=0). A bare ">0"
-            * test here would instead certify that placeholder as positive
-            * definite. Prefer the estimation-time verdict e(v_pd) when present;
-            * otherwise recompute with the same 1e-8 floor.
+            * scaffold V = I*1e-20 when Hessian inversion fails. Since v2.4.0 it
+            * rejects that placeholder via e(v_scaffold) and judges a real V with
+            * a scale-relative test (min eigenvalue > 0 and > 1e-12 of the max),
+            * recording the verdict in e(v_pd). A bare ">0" test here would
+            * instead certify the placeholder as positive definite, and the
+            * placeholder is perfectly conditioned, so a purely relative test
+            * would pass it too.
+            *
+            * Prefer the estimation-time verdict e(v_pd), which every current
+            * estimator posts. The recompute below is a legacy fallback for
+            * estimates stored before e(v_pd) existed (pre-2.3.3); it keeps the
+            * absolute 1e-8 floor those versions used, which is the verdict
+            * those estimates were produced under. No fit from a current version
+            * reaches it.
             capture local vpd = e(v_pd)
             if "`vpd'" != "" & "`vpd'" != "." {
                 local pd_ok = (`vpd' == 1)

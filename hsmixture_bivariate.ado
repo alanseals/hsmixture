@@ -1,4 +1,4 @@
-*! version 2.3.3  02jul2026
+*! version 2.4.0  14jul2026
 *! Bivariate Heterogeneity Joint Timing-of-Events Model
 *! Two-dimensional discrete-time hazard with SEPARATE latent types for
 *! treatment (v_T) and outcome (v_Y) on a 2x2 joint grid.
@@ -58,12 +58,13 @@ program hsmixture_bivariate, eclass sortpreserve
     *
     * DIFFicult, TRace, GRADient, HESSian, TECHnique(), TOLerance(),
     * LTOLerance(), NRTOLerance() are legacy `ml model d0` options from
-    * v2.0.0. They are silently accepted but ignored by the Mata optimize()
-    * implementation.
+    * v2.0.0. They are accepted but ignored by the Mata optimize()
+    * implementation; a runtime note (below) makes the no-op discoverable.
     syntax [if] [in], ///
         ID(varname) ///
         [RISKset(varname) ///
          PRisk(varname) ///
+         TIME(varname) ///
          FROM(name) ///
          ITERate(integer 200) ///
          noLOG ///
@@ -121,6 +122,54 @@ program hsmixture_bivariate, eclass sortpreserve
     unab treat_indep_exp : `treat_indep'
     unab outcome_indep_exp : `outcome_indep'
     markout `touse' `treat_indep_exp' `outcome_indep_exp'
+
+    * Within-person ordering for the row-level contract checks below. See
+    * hsmixture_joint.ado for rationale. Captured HERE, before any bysort
+    * below re-sorts the data.
+    tempvar __hsb_ord
+    if "`time'" != "" {
+        capture confirm numeric variable `time'
+        if _rc {
+            display as error "time() variable `time' must be numeric"
+            exit 198
+        }
+        capture assert !missing(`time') if `touse'
+        if _rc {
+            display as error ///
+                "time() variable `time' has missing values in the estimation sample"
+            exit 198
+        }
+        tempvar __hsb_tdup
+        quietly bysort `id' `time': egen double `__hsb_tdup' = total(`touse')
+        capture assert `__hsb_tdup' <= 1 if `touse'
+        if _rc {
+            display as error ///
+                "time() variable `time' has duplicate values within id in the estimation sample"
+            display as error ///
+                "  each person-period must have a distinct time value"
+            exit 198
+        }
+        drop `__hsb_tdup'
+        quietly gen double `__hsb_ord' = `time'
+    }
+    else {
+        * No time() supplied: see hsmixture_joint.ado for the rationale. A
+        * sort key that does not begin with `id' means row order carries no
+        * time information, so the contract checks below cannot be trusted.
+        local __hsb_sortkey : sortedby
+        local __hsb_s1 = word("`__hsb_sortkey'", 1)
+        if "`__hsb_s1'" != "`id'" {
+            display as txt ///
+                "note: the data are not sorted by `id'. The data-contract checks read"
+            display as txt ///
+                "  within-person order from the current row order. If rows are not in time"
+            display as txt ///
+                "  order within `id', sort the data or supply time(varname); otherwise the"
+            display as txt ///
+                "  checks may miss a malformed panel. The likelihood itself is unaffected."
+        }
+        quietly gen double `__hsb_ord' = _n
+    }
 
     * Stage 3: data-contract validation. Errors on violations.
     capture assert inlist(`treat_dep', 0, 1) if `touse'
@@ -182,6 +231,130 @@ program hsmixture_bivariate, eclass sortpreserve
             exit 198
         }
     }
+
+    * ----------------------------------------------------------------
+    * Stage 3 (row contracts, v2.4.0). Same contracts as hsmixture_joint;
+    * see that file for the full rationale. The likelihood sums a
+    * contribution over every surviving estimation row, so rows that
+    * should not be at risk must not be present (outcome) or must be
+    * excluded via riskset (treatment).
+    * ----------------------------------------------------------------
+    tempvar __hsb_evT __hsb_evY
+    quietly bysort `id': egen double `__hsb_evT' = ///
+        min(cond(`treat_dep' == 1 & `touse', `__hsb_ord', .))
+    quietly bysort `id': egen double `__hsb_evY' = ///
+        min(cond(`outcome_dep' == 1 & `touse', `__hsb_ord', .))
+
+    * (a) Absorbing outcome: no estimation rows after the outcome event.
+    capture assert missing(`__hsb_evY') | `__hsb_ord' <= `__hsb_evY' if `touse'
+    if _rc {
+        display as error ///
+            "estimation-sample rows occur after the outcome event for some id"
+        display as error ///
+            "  hsmixture_bivariate assumes an absorbing outcome: a person's rows must"
+        display as error ///
+            "  stop at the outcome event row. Rows after the event enter the likelihood"
+        display as error ///
+            "  as spurious at-risk periods and bias delta and the mixture parameters."
+        display as error ///
+            "  Drop post-event rows before estimating."
+        if "`time'" != "" {
+            display as error "  Ordering used: time(`time')."
+        }
+        else {
+            display as error ///
+                "  Ordering used: current row order within id. If the data are not sorted"
+            display as error ///
+                "  by id and time, sort them first or supply the time() option."
+        }
+        exit 198
+    }
+
+    * (b) One-time treatment: post-event rows must not re-enter the
+    * treatment-equation likelihood as at-risk periods.
+    if "`riskset'" != "" {
+        capture assert `riskset' == 0 ///
+            if `touse' & !missing(`__hsb_evT') & `__hsb_ord' > `__hsb_evT'
+        if _rc {
+            display as error ///
+                "riskset() rows occur after the treatment event (`riskset'=1 on post-event rows)"
+            display as error ///
+                "  hsmixture_bivariate models one-time treatment timing: person-periods"
+            display as error ///
+                "  after the treatment event are no longer at risk and must have `riskset'=0."
+            exit 198
+        }
+    }
+    else {
+        capture assert missing(`__hsb_evT') | `__hsb_ord' <= `__hsb_evT' if `touse'
+        if _rc {
+            display as error "riskset() is required for this data"
+            display as error ///
+                "  Some persons have estimation rows after their treatment event. Without"
+            display as error ///
+                "  a treatment risk set those rows enter the treatment-equation likelihood"
+            display as error ///
+                "  as spurious at-risk periods and bias the mass points and mixture. Supply"
+            display as error ///
+                "  a 0/1 indicator equal to 1 up to and including the treatment event, e.g."
+            display as error ///
+                "      gen byte trisk = (`treat_var' == 0)"
+            display as error ///
+                "  (valid when `treat_var' switches on the period after the event) and pass"
+            display as error ///
+                "  riskset(trisk)."
+            exit 198
+        }
+    }
+
+    * (c) Treatment-indicator consistency: absorbing, and never leads its
+    * own event. Same-period and lagged switch-on conventions both accepted.
+    tempvar __hsb_t1min __hsb_t0max
+    quietly bysort `id': egen double `__hsb_t1min' = ///
+        min(cond(`treat_var' == 1 & `touse', `__hsb_ord', .))
+    quietly bysort `id': egen double `__hsb_t0max' = ///
+        max(cond(`treat_var' == 0 & `touse', `__hsb_ord', .))
+
+    capture assert missing(`__hsb_t1min') | missing(`__hsb_t0max') | ///
+        `__hsb_t0max' < `__hsb_t1min' if `touse'
+    if _rc {
+        display as error ///
+            "treatment indicator `treat_var' reverts from 1 to 0 within id"
+        display as error ///
+            "  hsmixture_bivariate models an absorbing treatment state: once `treat_var'"
+        display as error ///
+            "  switches to 1 it must remain 1 for the person's remaining rows."
+        exit 198
+    }
+
+    capture assert missing(`__hsb_evT') | missing(`__hsb_t1min') | ///
+        `__hsb_t1min' >= `__hsb_evT' if `touse'
+    if _rc {
+        display as error ///
+            "treatment indicator `treat_var' equals 1 before the treatment event for some id"
+        display as error ///
+            "  `treat_var' may switch on in the event period or later (same-period and"
+        display as error ///
+            "  lagged conventions are both accepted), never before the event."
+        exit 198
+    }
+
+    * Warn on treated switches with no event row in sample (treatment timing
+    * unmodeled for those persons); see hsmixture_joint.ado for rationale.
+    tempvar __hsb_tag
+    quietly egen byte `__hsb_tag' = tag(`id') if `touse'
+    quietly count if `__hsb_tag' == 1 & !missing(`__hsb_t1min') & ///
+        !missing(`__hsb_t0max') & missing(`__hsb_evT')
+    if r(N) > 0 {
+        display as txt "note: " as res r(N) as txt ///
+            " person(s) switch to `treat_var'=1 with no `treat_dep'=1 row in the"
+        display as txt ///
+            "  estimation sample. Their treatment timing does not contribute to the"
+        display as txt ///
+            "  treatment equation (censored there); verify the event rows were"
+        display as txt "  excluded intentionally."
+    }
+    drop `__hsb_ord' `__hsb_evT' `__hsb_evY' `__hsb_t1min' `__hsb_t0max' `__hsb_tag'
 
     * Compile Mata functions (silently skips if already loaded)
     capture findfile hsmixture_bivariate_mata.do
@@ -291,6 +464,11 @@ program hsmixture_bivariate, eclass sortpreserve
 
     local best_ll = .
     local best_converged = 0
+    local best_clip = .
+    local best_v_scaffold = 0
+    local n_finite = 0
+    local n_conv_bfgs = 0
+    local n_aborted = 0
     local nstarts_use = min(`nstarts', 6)
     if `nstarts_use' < 1 local nstarts_use = 1
 
@@ -317,11 +495,35 @@ program hsmixture_bivariate, eclass sortpreserve
         scalar __hsb_converged = 0
 
         capture noisily mata: _hsb_run_optimize("__hsb_start", `iterate')
+        local __mata_rc = _rc
+
+        * Optimizer-abort recovery (v2.4.0). See hsmixture_joint.ado for the
+        * full rationale: a numeric-derivative abort near a flat optimum is a
+        * knife-edge event under Stata/MP's run-to-run arithmetic variation,
+        * not a property of the likelihood. Reset the cache and retry this
+        * start once from a deterministically jittered vector; a second abort
+        * falls through to normal "no usable result" handling.
+        if `__mata_rc' != 0 {
+            local ++n_aborted
+            if "`log'" != "nolog" {
+                display as txt ///
+                    "  Configuration `s': optimizer aborted (rc=`__mata_rc'); retrying from a jittered start"
+            }
+            capture mata: _hsb_cleanup()
+            matrix __hsb_start = `b0_`s'' * 1.001
+            scalar __hsb_has_result = 0
+            scalar __hsb_converged = 0
+            capture noisily mata: _hsb_run_optimize("__hsb_start", `iterate')
+        }
 
         * Check if Mata posted a result (finite LL)
         capture confirm scalar __hsb_has_result
         if _rc == 0 & scalar(__hsb_has_result) == 1 {
             local ll_s = scalar(__hsb_ll)
+            local ++n_finite
+            if scalar(__hsb_converged) == 1 {
+                local ++n_conv_bfgs
+            }
             if "`log'" != "nolog" {
                 local _pos_d = colsof(`b_treat') + colsof(`b_outcome') + 1
                 tempname _btemp
@@ -330,12 +532,24 @@ program hsmixture_bivariate, eclass sortpreserve
                     "  HR: " %5.3f exp(`_btemp'[1, `_pos_d'])
             }
 
+            * Selection rule: best FINITE log-likelihood wins regardless of
+            * the convergence flag; see hsmixture_joint.ado for rationale.
+            * The selected start's convergence status is reported via
+            * e(converged) / e(converged_bfgs).
             if `ll_s' > `best_ll' | `best_ll' == . {
                 local best_ll = `ll_s'
                 local best_start = `s'
                 local best_converged = scalar(__hsb_converged)
                 local best_ic = scalar(__hsb_ic)
+                * Clip-hit count at this start's optimum (see Mata
+                * _hsb_count_clips).
+                local best_clip = .
+                capture confirm scalar __hsb_clip
+                if _rc == 0 {
+                    local best_clip = scalar(__hsb_clip)
+                }
                 matrix __hsb_best_b = __hsb_b
+                local best_v_scaffold = 0
                 capture confirm matrix __hsb_V
                 if _rc == 0 {
                     matrix __hsb_best_V = __hsb_V
@@ -343,11 +557,13 @@ program hsmixture_bivariate, eclass sortpreserve
                 else {
                     * Hessian inversion failed. Post a finite scaffold V so
                     * `ereturn post` succeeds. Stata rejects all-missing V
-                    * with "matrix has missing values". Callers should gate
-                    * on e(converged)==1 (V positive definite) before trusting
+                    * with "matrix has missing values". e(v_scaffold)=1
+                    * records the placeholder. Callers should gate on
+                    * e(converged)==1 (V positive definite) before trusting
                     * SEs.
                     local _np = colsof(__hsb_best_b)
                     matrix __hsb_best_V = I(`_np') * 1e-20
+                    local best_v_scaffold = 1
                 }
                 capture confirm matrix __hsb_g
                 if _rc == 0 {
@@ -360,13 +576,14 @@ program hsmixture_bivariate, eclass sortpreserve
         }
         else {
             if "`log'" != "nolog" {
-                display as txt "  Configuration `s' failed to converge"
+                display as txt ///
+                    "  Configuration `s' produced no usable result (non-finite log-likelihood)"
             }
         }
 
         * Clean up per-iteration temporaries
         capture matrix drop __hsb_start __hsb_b __hsb_V __hsb_g
-        capture scalar drop __hsb_ll __hsb_has_result __hsb_converged __hsb_ic
+        capture scalar drop __hsb_ll __hsb_has_result __hsb_converged __hsb_ic __hsb_clip
     }
 
     * ----------------------------------------------------------------
@@ -374,13 +591,20 @@ program hsmixture_bivariate, eclass sortpreserve
     * ----------------------------------------------------------------
 
     if `best_ll' == . {
-        display as error "All starting configurations failed to converge"
+        display as error ///
+            "no starting configuration produced a finite log-likelihood"
+        display as error ///
+            "  (this is an optimization failure, not a convergence warning; try"
+        display as error ///
+            "  different starting values via from() or a simpler specification)"
         exit 430
     }
 
     if "`log'" != "nolog" {
         display _n as txt "Best result from starting configuration `best_start'" ///
             " (log-lik: " %10.2f `best_ll' ")"
+        display as txt "Starts: `n_finite'/`nstarts_use' returned a finite " ///
+            "log-likelihood; `n_conv_bfgs' satisfied the BFGS criterion"
     }
 
     * ----------------------------------------------------------------
@@ -450,12 +674,25 @@ program hsmixture_bivariate, eclass sortpreserve
         local strict_converged = 0
     }
 
+    * Scale-relative positive-definiteness (v2.4.0); see hsmixture_joint.ado
+    * for the rationale and the nondeterministic-verdict evidence that
+    * motivated replacing the absolute 1e-8 floor.
+    local v_mineig = .
     capture mata: st_numscalar("__hsb_meig", min(Re(eigenvalues(st_matrix("e(V)")))))
-    if _rc == 0 {
-        if !missing(scalar(__hsb_meig)) & scalar(__hsb_meig) > 1e-8 local v_pd = 1
+    local __rc_eig = _rc
+    capture mata: st_numscalar("__hsb_xeig", max(Re(eigenvalues(st_matrix("e(V)")))))
+    if `__rc_eig' == 0 & _rc == 0 {
+        if !missing(scalar(__hsb_meig)) local v_mineig = scalar(__hsb_meig)
+        if !missing(scalar(__hsb_meig)) & !missing(scalar(__hsb_xeig)) {
+            if scalar(__hsb_meig) > 0 & ///
+                scalar(__hsb_meig) > 1e-12 * scalar(__hsb_xeig) {
+                local v_pd = 1
+            }
+        }
     }
+    if `best_v_scaffold' local v_pd = 0
     if !`v_pd' local strict_converged = 0
-    capture scalar drop __hsb_meig
+    capture scalar drop __hsb_meig __hsb_xeig
 
     * Store results
     ereturn local cmd "hsmixture_bivariate"
@@ -466,6 +703,9 @@ program hsmixture_bivariate, eclass sortpreserve
     ereturn local idvar "`id'"
     ereturn local riskset_var "`riskset'"
     ereturn scalar n_starts = `nstarts_use'
+    ereturn scalar n_finite = `n_finite'
+    ereturn scalar n_bfgs_conv = `n_conv_bfgs'
+    ereturn scalar n_aborted = `n_aborted'
     ereturn scalar best_start = `best_start'
     ereturn scalar k = colsof(e(b))
     * Force estimates stats / IC machinery to use the *design* parameter
@@ -481,6 +721,9 @@ program hsmixture_bivariate, eclass sortpreserve
     ereturn scalar grad_norm = `grad_norm'
     ereturn scalar rel_grad = `rel_grad'
     ereturn scalar v_pd = `v_pd'
+    ereturn scalar v_scaffold = `best_v_scaffold'
+    ereturn scalar v_mineig = `v_mineig'
+    ereturn scalar clip_hits = `best_clip'
     ereturn scalar ic = `best_ic'
 
     * Post gradient at best-start optimum (consumed by
@@ -518,28 +761,32 @@ program hsmixture_bivariate, eclass sortpreserve
     ereturn scalar v_T2 = _b[/v_T2]
     ereturn scalar v_Y2 = _b[/v_Y2]
 
-    * Joint probabilities via softmax
-    tempname lp12 lp21 lp22 sum_e
+    * Joint probabilities via max-shifted softmax. Subtracting the largest
+    * logit before exponentiating prevents overflow when a cell logit is
+    * large; the shift cancels in the ratio (the (1,1) cell's logit is 0).
+    tempname lp12 lp21 lp22 lpmax sum_e
     scalar `lp12' = _b[/logit_pi_12]
     scalar `lp21' = _b[/logit_pi_21]
     scalar `lp22' = _b[/logit_pi_22]
-    scalar `sum_e' = 1 + exp(`lp12') + exp(`lp21') + exp(`lp22')
+    scalar `lpmax' = max(0, `lp12', `lp21', `lp22')
+    scalar `sum_e' = exp(0 - `lpmax') + exp(`lp12' - `lpmax') ///
+        + exp(`lp21' - `lpmax') + exp(`lp22' - `lpmax')
 
     tempname pi_mat
     matrix `pi_mat' = J(2, 2, .)
-    matrix `pi_mat'[1, 1] = 1 / `sum_e'
-    matrix `pi_mat'[1, 2] = exp(`lp12') / `sum_e'
-    matrix `pi_mat'[2, 1] = exp(`lp21') / `sum_e'
-    matrix `pi_mat'[2, 2] = exp(`lp22') / `sum_e'
+    matrix `pi_mat'[1, 1] = exp(0 - `lpmax') / `sum_e'
+    matrix `pi_mat'[1, 2] = exp(`lp12' - `lpmax') / `sum_e'
+    matrix `pi_mat'[2, 1] = exp(`lp21' - `lpmax') / `sum_e'
+    matrix `pi_mat'[2, 2] = exp(`lp22' - `lpmax') / `sum_e'
     matrix rownames `pi_mat' = "v_T=0" "v_T=v_T2"
     matrix colnames `pi_mat' = "v_Y=0" "v_Y=v_Y2"
     ereturn matrix pi_joint = `pi_mat'
 
     * Implied correlation
-    local pi11 = 1 / `sum_e'
-    local pi12 = exp(`lp12') / `sum_e'
-    local pi21 = exp(`lp21') / `sum_e'
-    local pi22 = exp(`lp22') / `sum_e'
+    local pi11 = exp(0 - `lpmax') / `sum_e'
+    local pi12 = exp(`lp12' - `lpmax') / `sum_e'
+    local pi21 = exp(`lp21' - `lpmax') / `sum_e'
+    local pi22 = exp(`lp22' - `lpmax') / `sum_e'
 
     local E_vT = (`pi21' + `pi22') * _b[/v_T2]
     local E_vY = (`pi12' + `pi22') * _b[/v_Y2]
@@ -574,7 +821,7 @@ program hsmixture_bivariate, eclass sortpreserve
     capture macro drop HSB_id HSB_treat_event HSB_outcome_event HSB_treat HSB_riskset
     capture macro drop HSB_nolog HSB_treat_vars_mata HSB_outcome_vars_mata
     capture matrix drop __hsb_start __hsb_b __hsb_V __hsb_g __hsb_best_b __hsb_best_V __hsb_best_g
-    capture scalar drop __hsb_ll __hsb_has_result __hsb_converged __hsb_ic
+    capture scalar drop __hsb_ll __hsb_has_result __hsb_converged __hsb_ic __hsb_clip
 
     * Only propagate rc when the substantive estimation didn't complete.
     * If `e(cmd)` was set to "hsmixture_bivariate", `ereturn post` and the
@@ -616,12 +863,29 @@ program Display
         }
         if e(v_pd) == 0 {
             display as err "  Variance matrix is not positive definite."
+            if e(v_scaffold) == 1 {
+                display as err ///
+                    "  (Hessian inversion failed; a placeholder variance matrix was posted.)"
+            }
         }
         if e(converged_bfgs) == 0 {
             display as err "  BFGS did not reach its own convergence criterion."
         }
         display as err "  The reported HR and CI may be unreliable."
         display as err "{hline 78}"
+    }
+
+    * Numerical-clip diagnostic. The likelihood truncates each linear
+    * predictor to [-20, 10] for overflow safety; a nonzero count at the
+    * optimum means part of the fitted surface is the clipped (approximate)
+    * likelihood rather than the exact cloglog likelihood.
+    if e(clip_hits) > 0 & e(clip_hits) < . {
+        display _n as txt "note: " as res %12.0fc e(clip_hits) ///
+            as txt " linear-predictor evaluations hit the numerical bounds"
+        display as txt ///
+            "  [-20, 10] at the optimum. Estimates whose fitted hazards sit at the"
+        display as txt ///
+            "  bounds are governed by the clipped likelihood; treat them with caution."
     }
 
     * Display coefficient table

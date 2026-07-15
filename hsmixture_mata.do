@@ -101,11 +101,13 @@ real scalar _hs_compute_ll(real rowvector b)
     }
 
     // Mixture weights via softmax: eta_1 = 0 normalized; eta_2..eta_K read
-    // from b at pos+K+k-2.
+    // from b at pos+K+k-2. Max-shifted before exponentiating so a large
+    // logit cannot overflow exp(); the shift cancels in the ratio.
     eta_raw = J(1, K, 0)
     for (j = 2; j <= K; j++) {
         eta_raw[j] = b[pos + K + j - 2]
     }
+    eta_raw = eta_raw :- max(eta_raw)
     sum_exp_eta = sum(exp(eta_raw))
     pi_k = exp(eta_raw) / sum_exp_eta
 
@@ -148,6 +150,42 @@ real scalar _hs_compute_ll(real rowvector b)
     total_ll = quadsum(ll_person)
     if (missing(total_ll)) total_ll = -1e20
     return(total_ll)
+}
+
+// ----------------------------------------------------------------
+// Clip-hit diagnostic
+// Counts linear-predictor evaluations outside the numerical bounds
+// [-20, 10] at parameter vector b (one count per row x type). The
+// likelihood truncates eta to that range for overflow safety; a nonzero
+// count at the optimum means part of the fitted surface is the clipped
+// (approximate) likelihood. Reported to the .ado as e(clip_hits).
+// ----------------------------------------------------------------
+real scalar _hs_count_clips(real rowvector b)
+{
+    external real matrix _hs_X
+    external real scalar _hs_K, _hs_k_x
+
+    real colvector beta, xb, eta_k
+    real scalar    lambda, j, k, pos, nclip
+    real rowvector v
+
+    beta   = b[1.._hs_k_x]'
+    pos    = _hs_k_x
+    lambda = b[pos+1]
+
+    v = J(1, _hs_K, 0)
+    if (_hs_K >= 2) v[2] = 1
+    for (j = 3; j <= _hs_K; j++) {
+        v[j] = b[pos + j - 1]
+    }
+
+    xb = _hs_X * beta
+    nclip = 0
+    for (k = 1; k <= _hs_K; k++) {
+        eta_k = xb :+ (lambda * v[k])
+        nclip = nclip + sum((eta_k :< -20) :| (eta_k :> 10))
+    }
+    return(nclip)
 }
 
 // ----------------------------------------------------------------
@@ -209,6 +247,7 @@ void _hs_run_optimize(string scalar b0_name, real scalar max_iter)
         st_numscalar("__hs_has_result", 1)
         st_numscalar("__hs_converged", conv)
         st_numscalar("__hs_ic", optimize_result_iterations(S))
+        st_numscalar("__hs_clip", _hs_count_clips(theta_hat))
 
         // Skip posting V/gradient if they contain missings (singular Hessian
         // at flat spot). The .ado falls through to scaffold-V; ereturn post

@@ -146,10 +146,13 @@ real scalar _hsj_compute_ll(real rowvector b)
     // Mixture weights via softmax: eta_1 = 0 normalized; eta_2..eta_K live at
     // pos + n_loadings + K + j - 2.
     // (separate: eta_2 at pos+K+2, matches v2.x; common: eta_2 at pos+K+1.)
+    // Max-shifted before exponentiating so a large logit cannot overflow
+    // exp(); the shift cancels in the ratio.
     eta_raw = J(1, K, 0)
     for (j = 2; j <= K; j++) {
         eta_raw[j] = b[pos + n_loadings + K + j - 2]
     }
+    eta_raw = eta_raw :- max(eta_raw)
     sum_exp_eta = sum(exp(eta_raw))
     pi_k = exp(eta_raw) / sum_exp_eta
 
@@ -202,6 +205,64 @@ real scalar _hsj_compute_ll(real rowvector b)
     total_ll = quadsum(ll_person)
     if (missing(total_ll)) total_ll = -1e20
     return(total_ll)
+}
+
+// ----------------------------------------------------------------
+// Clip-hit diagnostic
+// Counts linear-predictor evaluations outside the numerical bounds
+// [-20, 10] at parameter vector b (one count per row x type x equation).
+// Treatment-equation rows outside the risk set are excluded because their
+// contribution is multiplied by zero, so a clip there cannot affect the
+// likelihood. Reported to the .ado as e(clip_hits).
+// ----------------------------------------------------------------
+real scalar _hsj_count_clips(real rowvector b)
+{
+    external real matrix    _hsj_X_treat, _hsj_X_outcome
+    external real colvector _hsj_treat_ind, _hsj_riskset
+    external real scalar    _hsj_K, _hsj_k_treat, _hsj_k_outcome
+
+    real scalar     K, k_treat, k_outcome, pos, n_loadings, factor_common
+    real colvector  beta_T, beta_Y, xb_treat, xb_outcome, eta_T, eta_Y
+    real scalar     delta, lambda_T, lambda_Y, j, k, nclip
+    real rowvector  v
+
+    K         = _hsj_K
+    k_treat   = _hsj_k_treat
+    k_outcome = _hsj_k_outcome
+
+    factor_common = (st_global("HSJ_factor") == "common")
+    n_loadings = factor_common ? 1 : 2
+
+    beta_T   = b[1..k_treat]'
+    beta_Y   = b[(k_treat+1)..(k_treat+k_outcome)]'
+    pos      = k_treat + k_outcome
+    delta    = b[pos+1]
+    if (factor_common) {
+        lambda_T = b[pos+2]
+        lambda_Y = lambda_T
+    }
+    else {
+        lambda_T = b[pos+2]
+        lambda_Y = b[pos+3]
+    }
+
+    v = J(1, K, 0)
+    if (K >= 2) v[2] = 1
+    for (j = 3; j <= K; j++) {
+        v[j] = b[pos + n_loadings + j - 1]
+    }
+
+    xb_treat   = _hsj_X_treat * beta_T
+    xb_outcome = _hsj_X_outcome * beta_Y
+
+    nclip = 0
+    for (k = 1; k <= K; k++) {
+        eta_T = xb_treat :+ (lambda_T * v[k])
+        nclip = nclip + sum(((eta_T :< -20) :| (eta_T :> 10)) :& (_hsj_riskset :== 1))
+        eta_Y = xb_outcome :+ delta * _hsj_treat_ind :+ (lambda_Y * v[k])
+        nclip = nclip + sum((eta_Y :< -20) :| (eta_Y :> 10))
+    }
+    return(nclip)
 }
 
 // ----------------------------------------------------------------
@@ -271,6 +332,7 @@ void _hsj_run_optimize(string scalar b0_name, real scalar max_iter)
         st_numscalar("__hsj_has_result", 1)
         st_numscalar("__hsj_converged", conv)
         st_numscalar("__hsj_ic", optimize_result_iterations(S))
+        st_numscalar("__hsj_clip", _hsj_count_clips(theta_hat))
 
         // Hessian-based V. When the optimizer hits a flat spot (singular
         // Hessian) optimize_result_V_oim() returns a matrix with missing

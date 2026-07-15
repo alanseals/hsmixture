@@ -226,9 +226,17 @@ display _n as txt "{hline 70}"
 display as txt "EXAMPLE 3: Joint Timing-of-Events (K=3)"
 display as txt "{hline 70}"
 
+* iterate(100) caps this fit. On this small smoke-test DGP the K=3 mixture
+* routinely terminates at a spike-and-slab corner (documented in the header),
+* where each BFGS iteration degenerates into a full failed line search plus a
+* ~50-parameter numeric gradient -- minutes per iteration for a fit that is
+* expected NOT to strictly converge. The cap shortens the run without
+* changing what this script proves (commands run end-to-end; e(converged)
+* reports the corner honestly). Same rationale as the Part 3b cap in
+* hsmixture_certification_opposite_signs.do.
 hsmixture_joint (treat_event = x1 pd_*) ///
     (outcome_event = x1 pd_*, treat(treated)) ///
-    , id(id) k(3) iterate(300) riskset(treat_at_risk)
+    , id(id) k(3) iterate(100) riskset(treat_at_risk)
 
 estimates store m_joint_k3
 
@@ -262,9 +270,12 @@ display as txt "{hline 70}"
 
 use `example_data', clear
 
+* iterate(100): same smoke-test cap rationale as the K=3 fit above -- the
+* bivariate on this small DGP also terminates at a corner and is expected
+* not to strictly converge.
 hsmixture_bivariate (treat_event = x1 pd_*) ///
     (outcome_event = x1 pd_*, treat(treated)) ///
-    , id(id) nstarts(3) iterate(300) riskset(treat_at_risk)
+    , id(id) nstarts(3) iterate(100) riskset(treat_at_risk)
 
 estimates store m_bivariate
 

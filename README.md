@@ -9,13 +9,17 @@ Stata package implementing three estimators for discrete-time duration models wi
 
 ## Installation
 
-Install directly from this GitHub repository:
+Install a tagged release directly from this GitHub repository. Pinning to a
+tag gives a reproducible install, and every tag is a state that passed the
+full certification suite (see `CERTIFICATION.md`); `main` may be ahead of the
+last certified tag.
 
 ```stata
-net install hsmixture, from("https://raw.githubusercontent.com/alanseals/hsmixture/main") replace
+net install hsmixture, from("https://raw.githubusercontent.com/alanseals/hsmixture/v2.4.0") replace
 ```
 
-Then verify with `which hsmixture`.
+Then verify with `which hsmixture`. To track the development tip instead,
+replace `v2.4.0` with `main`.
 
 To install from a local clone instead, copy the `.ado`, `.sthlp`, and `_mata.do` files in this directory to your Stata adopath (e.g., `~/ado/personal/h/` on macOS or `c:\ado\personal\h\` on Windows).
 
@@ -54,11 +58,20 @@ The two specifications nest. `factor(common)` is `factor(separate)` with the con
 
 For data with substantial off-diagonal mass on the (v_T, v_Y) grid, neither joint variant is enough. Use `hsmixture_bivariate`, which estimates a free joint probability matrix on a 2x2 grid of corners.
 
+## Data contract (validated, not assumed)
+
+The estimators check the person-period panel before touching the likelihood and error on violations. The contract:
+
+- **Absorbing outcome.** At most one outcome event per id, and a person's rows must stop at the event row. Rows after the event would enter the likelihood as spurious at-risk periods, so the commands refuse them.
+- **One-time treatment (joint/bivariate).** At most one treatment event per id, and post-event person-periods must be excluded from the treatment equation via `riskset()`. `riskset()` is therefore effectively required: the commands error when it is omitted and any treated person remains observed after the treatment event (the normal shape of ToE data). The risk set must be 1 on the event row and 0 on every row after it; riskset = 0 before the event (delayed eligibility) is fine.
+- **Treatment indicator (joint/bivariate).** `treat()` must be absorbing (never revert to 0) and must never equal 1 before the person's treatment event. Same-period and lagged switch-on conventions are both accepted; delta applies exactly where the indicator equals 1. Persons who enter already treated are accepted; persons who switch to treated with no event row in sample trigger a warning.
+- **Ordering.** The row checks order person-periods by the current row order (keep the data sorted by id and time) or by an explicit `time(varname)` if you pass one. If the data are not sorted by the id variable the commands print a note, since row order then carries no time information and the checks cannot be trusted; pass `time()` in that case. `time()` does not change the likelihood, and the estimator is order-invariant within person, so this affects only the checks.
+
 ## When to use `riskset()`
 
-For one-time treatment timing (e.g., program entry, first marriage, job displacement), supply a 0/1 indicator that equals 1 only when the person is *at risk* for the treatment event. Typically this is the same as `treat_at_risk = (treated == 0)` if `treated` is the post-treatment dummy.
+For one-time treatment timing (e.g., program entry, first marriage, job displacement), supply a 0/1 indicator that equals 1 only when the person is *at risk* for the treatment event. Under the lagged treatment convention this is `treat_at_risk = (treated == 0)` where `treated` is the post-treatment dummy.
 
-The package validates that `treat_event = 1` only occurs when `riskset = 1` and errors if it does not. It also validates that each person has at most one treatment event and at most one outcome event in the estimation sample.
+The package validates that `treat_event = 1` only occurs when `riskset = 1`, that no `riskset = 1` rows follow the treatment event, and that each person has at most one treatment event and at most one outcome event in the estimation sample.
 
 ## Multistart
 
@@ -83,9 +96,9 @@ AIC and BIC are computed using `e(N_persons)`, not row count `e(N)`. The IID uni
 ## Requirements
 
 - Stata 14 or later
-- Data in person-period (long) format, sorted by id and time
+- Data in person-period (long) format, sorted by id and time (or pass `time()`)
 - Covariates as explicit variables (no factor variable notation)
-- `hsmixture_joint` / `hsmixture_bivariate` only: at most one treatment event per id and at most one absorbing outcome event per id (a fully censored id with no outcome event is allowed). The single-equation `hsmixture` takes no treatment variable and requires only the outcome variable (at most one event per id).
+- The data contract above. In short: rows stop at the outcome event; `riskset()` supplied for the joint estimators; `treat()` absorbing and never ahead of its event. A fully censored id with no outcome event is allowed. The single-equation `hsmixture` takes no treatment variable and requires only the outcome contract.
 
 ## Documentation
 
@@ -99,7 +112,9 @@ After installation, type `help hsmixture`, `help hsmixture_joint`, `help hsmixtu
 - `hsmixture_certification_opposite_signs.do` -- parameter-recovery test for the opposite-signs heterogeneity case (negative selection between treatment-prone and outcome-prone types).
 - `hsmixture_certification_bivariate.do` -- parameter-recovery test for `hsmixture_bivariate` on a DGP with substantial off-diagonal mass on the (v_T, v_Y) grid.
 
-Each cert script asserts on a recovery threshold and exits non-zero if the criteria fail.
+Each cert script asserts on a recovery threshold and exits non-zero if the criteria fail. `hsmixture_certification.do` additionally asserts that the data-contract validations reject malformed panels (post-outcome rows, omitted riskset, reverting or mistimed treatment indicators). Each script opens with a provenance block (date, Stata version, OS, resolved .ado path and version).
+
+`CERTIFICATION.md` records which certification runs back each released version, including the commit tested. `RELEASING.md` is the release checklist. `DEVELOPMENT.md` holds maintainer notes: why the current version changed what it did, known platform gotchas, and open items.
 
 ## Citation
 
